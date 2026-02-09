@@ -1,0 +1,2 @@
+add_executable(demo_open_close demo_open_close.cpp)
+target_link_libraries(demo_open_close MiniXLSX)

@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.11)
 
 project(MiniXLSX)
 
-option(MiniXLSX_BUILD_TEST ON)
-option(MiniXLSX_BUILD_DEMO ON)
+option(MiniXLSX_BUILD_TEST "Build MiniXLSX test applications" ON)
+option(MiniXLSX_BUILD_DEMO "Build MiniXLSX demo applications" ON)
 
 
 set(CMAKE_CXX_STANDARD 20)
@@ -12,14 +12,13 @@ set(MLSX_SRCS
     src/XLDocument.cpp
 )
 
-
-
-
-
 add_library(MiniXLSX SHARED ${MLSX_SRCS})
 
+target_include_directories(MiniXLSX PUBLIC include)
 
 add_subdirectory(KFZippa)
+
+target_link_libraries(MiniXLSX KFZippa)
 
 if(MiniXLSX_BUILD_TEST)
     add_subdirectory(tests)
