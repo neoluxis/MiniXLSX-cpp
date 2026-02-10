@@ -19,6 +19,14 @@ int main(int argc, const char** argv)
         std::cout << "Opened successfully. Temp dir: " << doc.getTempDir() << std::endl;
         std::cout << "Is open: " << (doc.isOpened() ? "Yes" : "No") << std::endl;
 
+        // Test workbook
+        auto& workbook = doc.getWorkbook();
+        std::cout << "Number of sheets: " << workbook.getSheetCount() << std::endl;
+        for (size_t i = 0; i < workbook.getSheetCount(); ++i)
+        {
+            std::cout << "Sheet " << i << ": " << workbook.getSheetName(i) << std::endl;
+        }
+
         // Close
         doc.close();
         std::cout << "Closed. Is open: " << (doc.isOpened() ? "Yes" : "No") << std::endl;

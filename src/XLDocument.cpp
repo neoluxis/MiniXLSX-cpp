@@ -3,11 +3,12 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 
 namespace cc::neolux::utils::MiniXLSX
 {
 
-    XLDocument::XLDocument() : isOpen(false) {}
+    XLDocument::XLDocument() : isOpen(false), workbook(nullptr) {}
 
     XLDocument::~XLDocument()
     {
@@ -43,6 +44,13 @@ namespace cc::neolux::utils::MiniXLSX
         }
 
         isOpen = true;
+        workbook = new XLWorkbook(*this);
+        if (!workbook->load())
+        {
+            std::cerr << "Failed to load workbook." << std::endl;
+            close();
+            return false;
+        }
         return true;
     }
 
@@ -50,9 +58,20 @@ namespace cc::neolux::utils::MiniXLSX
     {
         if (isOpen)
         {
+            delete workbook;
+            workbook = nullptr;
             std::filesystem::remove_all(tempDir);
             isOpen = false;
         }
+    }
+
+    bool XLDocument::close_safe()
+    {
+        if(isModified) {
+            return false;
+        }
+        close();
+        return true;
     }
 
     bool XLDocument::isOpened() const
@@ -63,6 +82,52 @@ namespace cc::neolux::utils::MiniXLSX
     const std::filesystem::path &XLDocument::getTempDir() const
     {
         return tempDir;
+    }
+
+    bool XLDocument::saveAs(const std::string &xlsxPath)
+    {
+        // Implementation for saving the document as a new XLSX file
+        // This is a placeholder implementation
+        if (!isOpen)
+        {
+            std::cerr << "Document is not open. Cannot save." << std::endl;
+            return false;
+        }
+
+        // Here you would implement the logic to zip the contents of tempDir back into an XLSX file
+        // For now, we just simulate success
+        this->xlsxPath = xlsxPath;
+        isModified = false;
+        return true;
+    }
+
+    bool XLDocument::save()
+    {
+        if (!isOpen)
+        {
+            std::cerr << "Document is not open. Cannot save." << std::endl;
+            return false;
+        }
+
+        if (!isModified)
+        {
+            // No changes to save
+            return true;
+        }
+
+        // Here you would implement the logic to zip the contents of tempDir back into an XLSX file
+        // For now, we just simulate success
+        isModified = false;
+        return true;
+    }
+
+    XLWorkbook& XLDocument::getWorkbook()
+    {
+        if (!workbook)
+        {
+            throw std::runtime_error("Workbook not loaded");
+        }
+        return *workbook;
     }
 
 } // namespace cc::neolux::utils::MiniXLSX

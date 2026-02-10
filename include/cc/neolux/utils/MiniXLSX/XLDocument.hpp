@@ -2,6 +2,9 @@
 
 #include <string>
 #include <filesystem>
+#include <map>
+#include <vector>
+#include "XLWorkbook.hpp"
 
 namespace cc::neolux::utils::MiniXLSX
 {
@@ -11,6 +14,9 @@ class XLDocument
 private:
     std::filesystem::path tempDir;
     bool isOpen;
+    bool isModified;
+    std::string xlsxPath;
+    XLWorkbook* workbook;
 
 public:
     XLDocument();
@@ -29,6 +35,12 @@ public:
     void close();
 
     /**
+     * @brief Close the document safely.
+     * @return true if the document was closed, false if it was modified and could not be closed.
+     */
+    bool close_safe();
+
+    /**
      * @brief Checks if the document is currently open.
      * @return true if open, false otherwise.
      */
@@ -39,6 +51,26 @@ public:
      * @return The temporary directory path.
      */
     const std::filesystem::path& getTempDir() const;
+
+    /**
+     * @brief Gets the workbook associated with this document.
+     * @return Reference to the workbook.
+     */
+    XLWorkbook& getWorkbook();
+
+
+    /**
+     * @brief Marks the document as modified.
+     * @param xlsxPath The path to the XLSX file.
+     * @return true if successful, false otherwise.
+     */
+    bool saveAs(const std::string& xlsxPath);
+
+    /**
+     * @brief Saves the document if it has been modified.
+     * @return true if successful, false otherwise.
+     */
+    bool save();
 };
 
 } // namespace cc::neolux::utils::MiniXLSX
