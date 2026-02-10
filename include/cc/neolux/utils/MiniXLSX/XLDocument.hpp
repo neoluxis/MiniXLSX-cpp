@@ -78,6 +78,11 @@ public:
      * @return true if successful, false otherwise.
      */
     bool save();
+
+    /**
+     * @brief Marks the document as modified.
+     */
+    void markModified();
 };
 
 } // namespace cc::neolux::utils::MiniXLSX

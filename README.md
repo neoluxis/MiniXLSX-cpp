@@ -38,9 +38,9 @@ cmake --build build
 
 ## TODO
 
-- [ ] Open a xlsx file
-- [ ] Open a workbook/worksheet
-- [ ] Read data from a cell
-- [ ] Write data to a cell
-- [ ] Get mediae 
-- [ ] Parse mediae, enhance cell data getter and setter
+- [x] Open a xlsx file
+- [x] Open a workbook/worksheet
+- [x] Read data from a cell
+- [x] Write data to a cell
+- [x] Get mediae 
+- [x] Parse mediae, enhance cell data getter and setter

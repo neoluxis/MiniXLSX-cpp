@@ -110,6 +110,19 @@ namespace cc::neolux::utils::MiniXLSX
         return true;
     }
 
+    bool XLWorkbook::save()
+    {
+        for (XLSheet* sheet : sheets)
+        {
+            if (!sheet->save())
+            {
+                std::cerr << "Failed to save sheet: " << sheet->getName() << std::endl;
+                return false;
+            }
+        }
+        return true;
+    }
+
     size_t XLWorkbook::getSheetCount() const
     {
         return sheets.size();

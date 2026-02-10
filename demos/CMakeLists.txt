@@ -3,3 +3,6 @@ target_link_libraries(demo_open_close MiniXLSX)
 
 add_executable(demo_create demo_create.cpp)
 target_link_libraries(demo_create MiniXLSX)
+
+add_executable(demo_get_cell demo_get_cell.cpp)
+target_link_libraries(demo_get_cell MiniXLSX)

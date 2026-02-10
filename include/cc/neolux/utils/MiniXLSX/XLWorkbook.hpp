@@ -28,6 +28,12 @@ namespace cc::neolux::utils::MiniXLSX
         bool load();
 
         /**
+         * @brief Saves all sheets in the workbook.
+         * @return true if successful, false otherwise.
+         */
+        bool save();
+
+        /**
          * @brief Gets the number of sheets in the workbook.
          * @return The number of sheets.
          */
