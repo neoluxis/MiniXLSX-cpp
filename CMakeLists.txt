@@ -8,21 +8,25 @@ option(MiniXLSX_BUILD_DEMO "Build MiniXLSX demo applications" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(PUGIXML REQUIRED pugixml)
+
+message("MiniXLSX: A c++ lib to process xlsx files by LKF")
 
 set(MLSX_SRCS
     src/XLDocument.cpp
     src/XLWorkbook.cpp
+    src/XLSheet.cpp
+    src/XLCellData.cpp
+    src/XLCellPicture.cpp
+    src/XLDrawing.cpp
 )
 
 add_library(MiniXLSX SHARED ${MLSX_SRCS})
 
-target_include_directories(MiniXLSX PUBLIC include ${PUGIXML_INCLUDE_DIRS})
+target_include_directories(MiniXLSX PUBLIC include)
 
 add_subdirectory(KFZippa)
 
-target_link_libraries(MiniXLSX KFZippa ${PUGIXML_LIBRARIES})
+target_link_libraries(MiniXLSX KFZippa)
 
 if(MiniXLSX_BUILD_TEST)
     add_subdirectory(tests)

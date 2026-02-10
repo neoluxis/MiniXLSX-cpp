@@ -1,6 +1,7 @@
 #include "cc/neolux/utils/MiniXLSX/XLDocument.hpp"
+#include "cc/neolux/utils/MiniXLSX/XLCellPicture.hpp"
 #include <iostream>
-#include "string"
+#include <string>
 
 int main(int argc, const char** argv)
 {
@@ -25,6 +26,33 @@ int main(int argc, const char** argv)
         for (size_t i = 0; i < workbook.getSheetCount(); ++i)
         {
             std::cout << "Sheet " << i << ": " << workbook.getSheetName(i) << std::endl;
+            auto& sheet = workbook.getSheet(i);
+            // Test some cells
+            std::string a1 = sheet.getCellValue("A1");
+            std::string b2 = sheet.getCellValue("B2");
+            std::cout << "  Cell A1: '" << a1 << "' (length: " << a1.length() << ")" << std::endl;
+            std::cout << "  Cell B2: '" << b2 << "' (length: " << b2.length() << ")" << std::endl;
+
+            // Check G7 for picture
+            const auto* cellG7 = sheet.getCell("G7");
+            if (cellG7)
+            {
+                std::cout << "  Cell G7: type='" << cellG7->getType() << "', value='" << cellG7->getValue() << "'" << std::endl;
+                if (cellG7->getType() == "picture")
+                {
+                    // Cast to XLCellPicture
+                    const auto* picCell = dynamic_cast<const cc::neolux::utils::MiniXLSX::XLCellPicture*>(cellG7);
+                    if (picCell)
+                    {
+                        std::cout << "    Picture name: '" << picCell->getImageFileName() << "'" << std::endl;
+                        std::cout << "    Full path: '" << picCell->getFullPath(doc.getTempDir().string()) << "'" << std::endl;
+                    }
+                }
+            }
+            else
+            {
+                std::cout << "  Cell G7: not found" << std::endl;
+            }
         }
 
         // Close

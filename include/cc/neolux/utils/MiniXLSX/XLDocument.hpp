@@ -30,6 +30,13 @@ public:
     bool open(const std::string& xlsxPath);
 
     /**
+     * @brief Creates a new XLSX file with basic structure.
+     * @param xlsxPath The path where the new XLSX file will be created.
+     * @return true if successful, false otherwise.
+     */
+    bool create(const std::string& xlsxPath);
+
+    /**
      * @brief Closes the document by cleaning up the temporary directory.
      */
     void close();
