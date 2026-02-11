@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 #include "XLCell.hpp"
+#include "OpenXLSXWrapper.hpp"
 
 namespace cc::neolux::utils::MiniXLSX
 {
@@ -19,9 +20,13 @@ namespace cc::neolux::utils::MiniXLSX
         std::string rId;
         std::map<std::string, std::unique_ptr<XLCell>> cells;
         std::vector<std::string> sharedStrings;
+        OpenXLSXWrapper* oxWrapper = nullptr;
+        unsigned int oxSheetIndex = 0;
+        mutable bool picturesLoaded = false;
 
     public:
         XLSheet(XLWorkbook& wb, const std::string& n, const std::string& sid, const std::string& rid);
+        XLSheet(XLWorkbook& wb, OpenXLSXWrapper* wrapper, unsigned int sheetIndex);
         ~XLSheet();
 
         /**

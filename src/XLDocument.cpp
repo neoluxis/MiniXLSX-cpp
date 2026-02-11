@@ -1,6 +1,7 @@
 #include "cc/neolux/utils/MiniXLSX/XLDocument.hpp"
 #include "cc/neolux/utils/KFZippa/kfzippa.hpp"
 #include "cc/neolux/utils/MiniXLSX/XLTemplate.hpp"
+#include "cc/neolux/utils/MiniXLSX/OpenXLSXWrapper.hpp"
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -15,6 +16,11 @@ namespace cc::neolux::utils::MiniXLSX
     XLDocument::~XLDocument()
     {
         close();
+    }
+
+    OpenXLSXWrapper* XLDocument::getWrapper() const
+    {
+        return oxwrapper ? oxwrapper.get() : nullptr;
     }
 
     bool XLDocument::open(const std::string &xlsxPath)
@@ -45,6 +51,15 @@ namespace cc::neolux::utils::MiniXLSX
             return false;
         }
 
+        // Also open via OpenXLSXWrapper to allow wrapper-based operations
+        try {
+            oxwrapper = std::make_unique<OpenXLSXWrapper>();
+            if (!oxwrapper->open(xlsxPath)) {
+                // not fatal; wrapper optional for now
+                oxwrapper.reset();
+            }
+        } catch (...) { oxwrapper.reset(); }
+
         isOpen = true;
         workbook = new XLWorkbook(*this);
         if (!workbook->load())
@@ -71,6 +86,10 @@ namespace cc::neolux::utils::MiniXLSX
     {
         if (isOpen)
         {
+            if (oxwrapper) {
+                try { oxwrapper->close(); } catch(...) {}
+                oxwrapper.reset();
+            }
             delete workbook;
             workbook = nullptr;
             std::filesystem::remove_all(tempDir);

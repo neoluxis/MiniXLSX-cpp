@@ -1,28 +1,33 @@
+// OpenXLSXWrapper — thin adapter to 3rdparty OpenXLSX
 #pragma once
 
 #include <string>
-#include <optional>
 #include <vector>
+#include <optional>
+#include <cstdint>
 #include "Types.hpp"
 
 namespace cc::neolux::utils::MiniXLSX
 {
-    class MiniXLSX
+    class OpenXLSXWrapper
     {
     public:
-        MiniXLSX();
-        ~MiniXLSX();
+        OpenXLSXWrapper();
+        ~OpenXLSXWrapper();
 
         bool open(const std::string& path);
         void close();
         bool isOpen() const;
 
+        unsigned int sheetCount() const;
+        std::string sheetName(unsigned int index) const;
+
         std::optional<std::string> getCellValue(unsigned int sheetIndex, const std::string& ref) const;
         bool setCellValue(unsigned int sheetIndex, const std::string& ref, const std::string& value);
         bool setCellStyle(unsigned int sheetIndex, const std::string& ref, const CellStyle& style);
         bool save();
-
         std::vector<PictureInfo> getPictures(unsigned int sheetIndex) const;
+        std::optional<std::vector<uint8_t>> getPictureRaw(unsigned int sheetIndex, const std::string& ref) const;
 
     private:
         struct Impl;
@@ -30,4 +35,3 @@ namespace cc::neolux::utils::MiniXLSX
     };
 
 } // namespace cc::neolux::utils::MiniXLSX
-

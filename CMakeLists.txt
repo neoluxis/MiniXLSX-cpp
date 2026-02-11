@@ -18,8 +18,9 @@ set(MLSX_SRCS
     src/XLSheet.cpp
     src/XLCellData.cpp
     src/XLCellPicture.cpp
-    src/XLDrawing.cpp
     src/XLTemplate.cpp
+    src/OpenXLSXWrapper.cpp
+    src/MiniXLSX.cpp
 )
 
 set(TEMPLCRE_SRCS
@@ -33,7 +34,8 @@ target_include_directories(MiniXLSX PUBLIC include)
 add_subdirectory(3rdparty/KFZippa)
 add_subdirectory(3rdparty/OpenXLSX)
 
-target_link_libraries(MiniXLSX KFZippa)
+target_link_libraries(MiniXLSX PUBLIC KFZippa)
+target_link_libraries(MiniXLSX PUBLIC OpenXLSX::OpenXLSX)
 
 # Find system-installed pugixml via pkg-config and link it
 find_package(PkgConfig REQUIRED)
@@ -44,7 +46,7 @@ endif()
 if (PUGIXML_FOUND)
     target_include_directories(MiniXLSX PUBLIC ${PUGIXML_INCLUDE_DIRS})
     target_link_directories(MiniXLSX PUBLIC ${PUGIXML_LIBRARY_DIRS})
-    target_link_libraries(MiniXLSX ${PUGIXML_LIBRARIES})
+    target_link_libraries(MiniXLSX PUBLIC ${PUGIXML_LIBRARIES})
     target_compile_options(MiniXLSX PUBLIC ${PUGIXML_CFLAGS_OTHER})
 else()
     message(FATAL_ERROR "pugixml not found. Please install system pugixml (pkg-config entry 'pugixml' or 'pugi').")

@@ -29,6 +29,22 @@ namespace cc::neolux::utils::MiniXLSX
             return false;
         }
 
+        // If OpenXLSX wrapper is available and open, build sheet list from it
+        try {
+            OpenXLSXWrapper* w = document->getWrapper();
+            if (w && w->isOpen()) {
+                unsigned int cnt = w->sheetCount();
+                for (unsigned int i = 0; i < cnt; ++i) {
+                    std::string name = w->sheetName(i);
+                    XLSheet* xlSheet = new XLSheet(*this, w, i);
+                    // do not call xlSheet->load() since wrapper will serve cell access
+                    sheets.push_back(xlSheet);
+                    sheetNames.push_back(name);
+                }
+                return true;
+            }
+        } catch(...) {}
+
         std::filesystem::path workbookPath = document->getTempDir() / "xl" / "workbook.xml";
         std::ifstream file(workbookPath);
         if (!file.is_open())
@@ -125,11 +141,26 @@ namespace cc::neolux::utils::MiniXLSX
 
     size_t XLWorkbook::getSheetCount() const
     {
+        // Prefer OpenXLSX if available
+        try {
+            OpenXLSXWrapper* w = document->getWrapper();
+            if (w && w->isOpen()) return static_cast<size_t>(w->sheetCount());
+        } catch(...) {}
         return sheets.size();
     }
 
     const std::string& XLWorkbook::getSheetName(size_t index) const
     {
+        try {
+            OpenXLSXWrapper* w = document->getWrapper();
+            if (w && w->isOpen()) {
+                std::string name = w->sheetName(static_cast<unsigned int>(index));
+                // return as static copy to satisfy reference return — small hack for compatibility
+                static thread_local std::string tmp;
+                tmp = name;
+                return tmp;
+            }
+        } catch(...) {}
         if (index >= sheetNames.size())
         {
             static std::string empty;

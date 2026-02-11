@@ -5,6 +5,7 @@
 #include <map>
 #include <vector>
 #include "XLWorkbook.hpp"
+#include "OpenXLSXWrapper.hpp"
 
 namespace cc::neolux::utils::MiniXLSX
 {
@@ -17,10 +18,14 @@ private:
     bool isModified;
     std::string xlsxPath;
     XLWorkbook* workbook;
+    std::unique_ptr<OpenXLSXWrapper> oxwrapper;
 
 public:
     XLDocument();
     ~XLDocument();
+
+    // Access to OpenXLSX wrapper if available
+    OpenXLSXWrapper* getWrapper() const;
 
     /**
      * @brief Opens an XLSX file by unzipping it to a temporary directory.

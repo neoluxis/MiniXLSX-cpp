@@ -6,3 +6,9 @@ target_link_libraries(demo_create MiniXLSX)
 
 add_executable(demo_get_cell demo_get_cell.cpp)
 target_link_libraries(demo_get_cell MiniXLSX)
+
+add_executable(demo_set_style demo_set_style.cpp)
+target_link_libraries(demo_set_style MiniXLSX)
+
+add_executable(demo_use_wrapper demo_use_wrapper.cpp)
+target_link_libraries(demo_use_wrapper MiniXLSX OpenXLSX)
