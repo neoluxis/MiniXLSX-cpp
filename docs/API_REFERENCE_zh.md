@@ -136,6 +136,7 @@ if (c && c->getType() == "picture") {
 **`OpenXLSXWrapper`（可选）**
 - 这是对 `3rdparty/OpenXLSX` 的薄包装（在 `include/cc/neolux/utils/MiniXLSX/OpenXLSXWrapper.hpp`）。用于在需要更强大功能时直接利用 `OpenXLSX` 的 API。
 - 常用方法：`open(path)`、`close()`、`isOpen()`、`sheetCount()`、`sheetName(index)`、`getCellValue(sheetIndex, ref)` 等。
+ - 详细文档（中文、示例）：[MiniXLSX_wrapper_zh.md](MiniXLSX_wrapper_zh.md)
 
 ## 图片（media）处理
 
