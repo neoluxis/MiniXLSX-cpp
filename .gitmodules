@@ -1,3 +1,6 @@
 [submodule "KFZippa"]
 	path = KFZippa
 	url = https://github.com/neoluxis/KFZippa-cpp.git
+[submodule "3rdparty/KFZippa"]
+	path = 3rdparty/KFZippa
+	url = https://github.com/neoluxis/KFZippa-cpp.git

@@ -10,8 +10,8 @@
 #include <string>
 #include <memory>
 #include <map>
-#include <map>
 #include <algorithm>
+#include <pugixml.hpp>
 
 namespace cc::neolux::utils::MiniXLSX
 {
@@ -38,87 +38,58 @@ namespace cc::neolux::utils::MiniXLSX
 
     bool XLSheet::load()
     {
-        // Load shared strings first
-        std::filesystem::path sharedStringsPath = workbook->getDocument().getTempDir() / "xl" / "sharedStrings.xml";
-        std::ifstream sharedFile(sharedStringsPath);
-        if (sharedFile.is_open())
+        namespace fs = std::filesystem;
+        fs::path temp = workbook->getDocument().getTempDir();
+
+        // Load shared strings using pugixml
+        fs::path sharedStringsPath = temp / "xl" / "sharedStrings.xml";
+        if (fs::exists(sharedStringsPath))
         {
-            std::string sharedContent((std::istreambuf_iterator<char>(sharedFile)), std::istreambuf_iterator<char>());
-            sharedFile.close();
-
-            size_t siPos = 0;
-            while ((siPos = sharedContent.find("<si>", siPos)) != std::string::npos)
+            pugi::xml_document sdoc;
+            pugi::xml_parse_result sres = sdoc.load_file(sharedStringsPath.c_str());
+            if (sres)
             {
-                size_t siEnd = sharedContent.find("</si>", siPos);
-                if (siEnd == std::string::npos) break;
-
-                std::string siTag = sharedContent.substr(siPos, siEnd - siPos + 5);
-
-                size_t tStart = siTag.find("<t>");
-                if (tStart != std::string::npos)
+                pugi::xml_node sst = sdoc.child("sst");
+                for (pugi::xml_node si : sst.children("si"))
                 {
-                    tStart += 3;
-                    size_t tEnd = siTag.find("</t>", tStart);
-                    if (tEnd != std::string::npos)
+                    // Prefer direct <t> child but handle rich text
+                    pugi::xml_node tnode = si.child("t");
+                    if (tnode)
                     {
-                        std::string text = siTag.substr(tStart, tEnd - tStart);
-                        sharedStrings.push_back(text);
+                        sharedStrings.push_back(tnode.text().get());
+                    }
+                    else
+                    {
+                        std::string acc;
+                        for (pugi::xpath_node xpath_node : si.select_nodes(".//t"))
+                        {
+                            acc += xpath_node.node().text().get();
+                        }
+                        if (!acc.empty()) sharedStrings.push_back(acc);
                     }
                 }
-
-                siPos = siEnd + 5;
             }
         }
 
-        // Find the sheet file path using rId
-        // In XLSX, xl/_rels/workbook.xml.rels maps rId to target
-        std::filesystem::path relsPath = workbook->getDocument().getTempDir() / "xl" / "_rels" / "workbook.xml.rels";
-        
-        std::ifstream relsFile(relsPath);
-        if (!relsFile.is_open())
+        // Find the sheet file path using rId via workbook rels
+        fs::path relsPath = temp / "xl" / "_rels" / "workbook.xml.rels";
+        pugi::xml_document relsDoc;
+        if (!fs::exists(relsPath) || !relsDoc.load_file(relsPath.c_str()))
         {
             std::cerr << "Failed to open workbook.xml.rels" << std::endl;
             return false;
         }
 
-        std::string relsContent((std::istreambuf_iterator<char>(relsFile)), std::istreambuf_iterator<char>());
-        relsFile.close();
-
         std::string target;
-        size_t relPos = 0;
-        while ((relPos = relsContent.find("<Relationship ", relPos)) != std::string::npos)
+        pugi::xml_node relsRoot = relsDoc.child("Relationships");
+        for (pugi::xml_node rel : relsRoot.children("Relationship"))
         {
-            size_t relEnd = relsContent.find("/>", relPos);
-            if (relEnd == std::string::npos) break;
-
-            std::string relTag = relsContent.substr(relPos, relEnd - relPos + 2);
-
-            size_t idStart = relTag.find("Id=\"");
-            if (idStart != std::string::npos)
+            pugi::xml_attribute idAttr = rel.attribute("Id");
+            if (idAttr && idAttr.value() == rId)
             {
-                idStart += 4;
-                size_t idEnd = relTag.find("\"", idStart);
-                if (idEnd != std::string::npos)
-                {
-                    std::string id = relTag.substr(idStart, idEnd - idStart);
-                    if (id == rId)
-                    {
-                        size_t targetStart = relTag.find("Target=\"");
-                        if (targetStart != std::string::npos)
-                        {
-                            targetStart += 8;
-                            size_t targetEnd = relTag.find("\"", targetStart);
-                            if (targetEnd != std::string::npos)
-                            {
-                                target = relTag.substr(targetStart, targetEnd - targetStart);
-                                break;
-                            }
-                        }
-                    }
-                }
+                pugi::xml_attribute targetAttr = rel.attribute("Target");
+                if (targetAttr) { target = targetAttr.value(); break; }
             }
-
-            relPos = relEnd + 2;
         }
 
         if (target.empty())
@@ -127,169 +98,81 @@ namespace cc::neolux::utils::MiniXLSX
             return false;
         }
 
-        std::filesystem::path sheetPath = workbook->getDocument().getTempDir() / "xl" / target;
-
-        std::ifstream sheetFile(sheetPath);
-        if (!sheetFile.is_open())
+        fs::path sheetPath = temp / "xl" / target;
+        pugi::xml_document sheetDoc;
+        if (!fs::exists(sheetPath) || !sheetDoc.load_file(sheetPath.c_str()))
         {
             std::cerr << "Failed to open sheet: " << sheetPath << std::endl;
             return false;
         }
 
-        std::string sheetContent((std::istreambuf_iterator<char>(sheetFile)), std::istreambuf_iterator<char>());
-        sheetFile.close();
-
         // Parse sheetData
-        size_t dataPos = sheetContent.find("<sheetData>");
-        if (dataPos == std::string::npos)
+        pugi::xml_node worksheet = sheetDoc.child("worksheet");
+        pugi::xml_node sheetData = worksheet.child("sheetData");
+        if (!sheetData)
         {
             std::cerr << "No sheetData found." << std::endl;
             return false;
         }
 
-        size_t dataEnd = sheetContent.find("</sheetData>", dataPos);
-        if (dataEnd == std::string::npos)
+        for (pugi::xml_node row : sheetData.children("row"))
         {
-            std::cerr << "No end of sheetData found." << std::endl;
-            return false;
-        }
-
-        std::string sheetData = sheetContent.substr(dataPos, dataEnd - dataPos + 13);
-
-        size_t cellPos = 0;
-        while ((cellPos = sheetData.find("<c ", cellPos)) != std::string::npos)
-        {
-            // Find end of tag
-            size_t tagEnd = sheetData.find("/>", cellPos);
-            bool isSelfClosing = (tagEnd != std::string::npos);
-            if (!isSelfClosing)
+            for (pugi::xml_node c : row.children("c"))
             {
-                tagEnd = sheetData.find("</c>", cellPos);
-                if (tagEnd == std::string::npos) break;
-                tagEnd += 3; // Include </c>
-            }
-            else
-            {
-                tagEnd += 1; // Include />
-            }
+                std::string ref = c.attribute("r").as_string();
+                std::string type = c.attribute("t").as_string();
+                std::string value;
 
-            std::string cellTag = sheetData.substr(cellPos, tagEnd - cellPos + 1);
-
-            // Extract r
-            size_t rStart = cellTag.find("r=\"");
-            std::string ref;
-            if (rStart != std::string::npos)
-            {
-                rStart += 3;
-                size_t rEnd = cellTag.find("\"", rStart);
-                if (rEnd != std::string::npos)
+                pugi::xml_node v = c.child("v");
+                if (v)
                 {
-                    ref = cellTag.substr(rStart, rEnd - rStart);
+                    value = v.text().get();
                 }
-            }
-
-            // Extract t
-            std::string type = "n"; // Default to number type
-            size_t tPos = cellTag.find(" t=\"");
-            if (tPos == std::string::npos) {
-                tPos = cellTag.find("t=\"");
-                if (tPos == std::string::npos || (tPos > 0 && cellTag[tPos-1] != ' ' && cellTag[tPos-1] != '<')) {
-                    // not at start of attribute
-                } else {
-                    size_t tStart = tPos + 3;
-                    size_t tEnd = cellTag.find("\"", tStart);
-                    if (tEnd != std::string::npos) {
-                        type = cellTag.substr(tStart, tEnd - tStart);
+                else
+                {
+                    pugi::xml_node is = c.child("is");
+                    if (is)
+                    {
+                        pugi::xml_node t = is.child("t");
+                        if (t) value = t.text().get();
                     }
                 }
-            } else {
-                size_t tStart = tPos + 4;
-                size_t tEnd = cellTag.find("\"", tStart);
-                if (tEnd != std::string::npos) {
-                    type = cellTag.substr(tStart, tEnd - tStart);
-                }
-            }
 
-            // Extract v
-            size_t vStart = cellTag.find("<v>");
-            std::string value;
-            if (vStart != std::string::npos)
-            {
-                vStart += 3;
-                size_t vEnd = cellTag.find("</v>", vStart);
-                if (vEnd != std::string::npos)
+                if (!ref.empty())
                 {
-                    value = cellTag.substr(vStart, vEnd - vStart);
+                    cells[ref] = std::make_unique<XLCellData>(ref, value, type.empty() ? "n" : type, sharedStrings);
                 }
             }
-
-            if (!ref.empty())
-            {
-                cells[ref] = std::make_unique<XLCellData>(ref, value, type, sharedStrings);
-            }
-
-            cellPos = tagEnd + 1;
         }
 
-        // Parse drawings
-        size_t drawingPos = sheetContent.find("<drawing r:id=\"");
-        if (drawingPos != std::string::npos)
+        // Parse drawings (if any)
+        pugi::xml_node drawingNode = worksheet.child("drawing");
+        if (drawingNode)
         {
-            size_t idStart = drawingPos + 15; // <drawing r:id="
-            size_t idEnd = sheetContent.find("\"", idStart);
-            if (idEnd != std::string::npos)
+            pugi::xml_attribute ridAttr = drawingNode.attribute("r:id");
+            if (ridAttr)
             {
-                std::string drawingRId = sheetContent.substr(idStart, idEnd - idStart);
+                std::string drawingRId = ridAttr.value();
 
-                // Find drawing file using sheet rels
-                std::filesystem::path sheetRelsPath = workbook->getDocument().getTempDir() / "xl" / "worksheets" / "_rels" / (std::filesystem::path(target).filename().string() + ".rels");
-                std::ifstream sheetRelsFile(sheetRelsPath);
-                if (sheetRelsFile.is_open())
+                fs::path sheetRelsPath = temp / "xl" / "worksheets" / "_rels" / (fs::path(target).filename().string() + ".rels");
+                pugi::xml_document sheetRelsDoc;
+                if (fs::exists(sheetRelsPath) && sheetRelsDoc.load_file(sheetRelsPath.c_str()))
                 {
-                    std::string sheetRelsContent((std::istreambuf_iterator<char>(sheetRelsFile)), std::istreambuf_iterator<char>());
-                    sheetRelsFile.close();
-
                     std::string drawingTarget;
-                    size_t relPos = 0;
-                    while ((relPos = sheetRelsContent.find("<Relationship ", relPos)) != std::string::npos)
+                    pugi::xml_node sroot = sheetRelsDoc.child("Relationships");
+                    for (pugi::xml_node rel : sroot.children("Relationship"))
                     {
-                        size_t relEnd = sheetRelsContent.find("/>", relPos);
-                        if (relEnd == std::string::npos) break;
-
-                        std::string relTag = sheetRelsContent.substr(relPos, relEnd - relPos + 2);
-
-                        size_t idStartRel = relTag.find("Id=\"");
-                        if (idStartRel != std::string::npos)
+                        if (std::string(rel.attribute("Id").as_string()) == drawingRId)
                         {
-                            idStartRel += 4;
-                            size_t idEndRel = relTag.find("\"", idStartRel);
-                            if (idEndRel != std::string::npos)
-                            {
-                                std::string id = relTag.substr(idStartRel, idEndRel - idStartRel);
-                                if (id == drawingRId)
-                                {
-                                    size_t targetStart = relTag.find("Target=\"");
-                                    if (targetStart != std::string::npos)
-                                    {
-                                        targetStart += 8;
-                                        size_t targetEnd = relTag.find("\"", targetStart);
-                                        if (targetEnd != std::string::npos)
-                                        {
-                                            drawingTarget = relTag.substr(targetStart, targetEnd - targetStart);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
+                            drawingTarget = rel.attribute("Target").as_string();
+                            break;
                         }
-
-                        relPos = relEnd + 2;
                     }
 
                     if (!drawingTarget.empty())
                     {
-                        std::filesystem::path drawingPath = (workbook->getDocument().getTempDir() / "xl" / "worksheets" / drawingTarget).lexically_normal();
-                        std::filesystem::path drawingRelsPath = drawingPath.parent_path() / "_rels" / (drawingPath.filename().string() + ".rels");
+                        fs::path drawingPath = (temp / "xl" / "worksheets" / drawingTarget).lexically_normal();
+                        fs::path drawingRelsPath = drawingPath.parent_path() / "_rels" / (drawingPath.filename().string() + ".rels");
 
                         XLDrawing drawing(drawingPath.string(), drawingRelsPath.string());
                         if (drawing.load())

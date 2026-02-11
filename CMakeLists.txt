@@ -30,9 +30,25 @@ add_library(MiniXLSX SHARED ${MLSX_SRCS})
 
 target_include_directories(MiniXLSX PUBLIC include)
 
-add_subdirectory(KFZippa)
+add_subdirectory(3rdparty/KFZippa)
+add_subdirectory(3rdparty/OpenXLSX)
 
 target_link_libraries(MiniXLSX KFZippa)
+
+# Find system-installed pugixml via pkg-config and link it
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PUGIXML QUIET pugixml)
+if (NOT PUGIXML_FOUND)
+    pkg_check_modules(PUGIXML QUIET pugi)
+endif()
+if (PUGIXML_FOUND)
+    target_include_directories(MiniXLSX PUBLIC ${PUGIXML_INCLUDE_DIRS})
+    target_link_directories(MiniXLSX PUBLIC ${PUGIXML_LIBRARY_DIRS})
+    target_link_libraries(MiniXLSX ${PUGIXML_LIBRARIES})
+    target_compile_options(MiniXLSX PUBLIC ${PUGIXML_CFLAGS_OTHER})
+else()
+    message(FATAL_ERROR "pugixml not found. Please install system pugixml (pkg-config entry 'pugixml' or 'pugi').")
+endif()
 
 
 if(MiniXLSX_BUILD_TOOL)
