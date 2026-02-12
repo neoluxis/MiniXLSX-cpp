@@ -44,3 +44,30 @@ cmake --build build
 - [x] Write data to a cell
 - [x] Get mediae 
 - [x] Parse mediae, enhance cell data getter and setter
+- [x] Sheet name to index lookup utility function
+
+## API Reference
+
+### OpenXLSXWrapper Class
+
+#### Sheet Management
+- `unsigned int sheetCount() const` - Get the number of sheets in the workbook
+- `std::string sheetName(unsigned int index) const` - Get sheet name by index
+- `std::optional<unsigned int> sheetIndex(const std::string& sheetName) const` - Get sheet index by name
+
+#### Cell Operations
+- `std::optional<std::string> getCellValue(unsigned int sheetIndex, const std::string& ref) const` - Read cell value
+- `bool setCellValue(unsigned int sheetIndex, const std::string& ref, const std::string& value)` - Write cell value
+- `bool setCellStyle(unsigned int sheetIndex, const std::string& ref, const CellStyle& style)` - Set cell style
+
+#### Picture Operations
+- `std::vector<PictureInfo> getPictures(unsigned int sheetIndex) const` - Get pictures in a sheet by index
+- `std::vector<SheetPicture> fetchAllPicturesInSheet(const std::string& sheetName) const` - Get pictures in a sheet by name
+- `std::optional<std::vector<uint8_t>> getPictureRaw(unsigned int sheetIndex, const std::string& ref) const` - Get raw picture data
+
+#### File Operations
+- `bool open(const std::string& path)` - Open XLSX file
+- `void close()` - Close file and cleanup
+- `bool isOpen() const` - Check if file is open
+- `bool save()` - Save changes to file
+- `void cleanupTempDir()` - Cleanup temporary files

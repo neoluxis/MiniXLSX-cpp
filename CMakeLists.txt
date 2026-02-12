@@ -60,6 +60,7 @@ endif(MiniXLSX_BUILD_TOOL)
 
 
 if(MiniXLSX_BUILD_TEST)
+    enable_testing()
     add_subdirectory(tests)
 endif(MiniXLSX_BUILD_TEST)
 

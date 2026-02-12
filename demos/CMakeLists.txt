@@ -12,3 +12,6 @@ target_link_libraries(demo_set_style MiniXLSX)
 
 add_executable(demo_use_wrapper demo_use_wrapper.cpp)
 target_link_libraries(demo_use_wrapper MiniXLSX OpenXLSX)
+
+add_executable(demo_sheet_index demo_sheet_index.cpp)
+target_link_libraries(demo_sheet_index MiniXLSX)

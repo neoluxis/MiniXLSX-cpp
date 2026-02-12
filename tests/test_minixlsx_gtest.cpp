@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "cc/neolux/utils/MiniXLSX/XLDocument.hpp"
 #include "cc/neolux/utils/MiniXLSX/XLCellPicture.hpp"
+#include "cc/neolux/utils/MiniXLSX/OpenXLSXWrapper.hpp"
 
 using namespace cc::neolux::utils::MiniXLSX;
 
@@ -71,4 +72,43 @@ TEST(MiniXLSX_Pictures, DetectPictureG7) {
     ASSERT_NE(pic, nullptr);
     EXPECT_FALSE(pic->getImageFileName().empty());
     doc.close();
+}
+
+TEST(MiniXLSX_Wrapper, SheetIndexLookup) {
+    OpenXLSXWrapper wrapper;
+    const char* candidates[] = {"test.xlsx", "build/test.xlsx", "tests/../test.xlsx"};
+    bool opened = false;
+    for (auto p : candidates) {
+        if (wrapper.open(p)) { opened = true; break; }
+    }
+    if (!opened) {
+        GTEST_SKIP() << "test.xlsx not available, skipping";
+    }
+
+    // Test that we can find sheet index by name
+    unsigned int sheetCount = wrapper.sheetCount();
+    ASSERT_GE(sheetCount, 1u);
+
+    // Get the first sheet name
+    std::string firstSheetName = wrapper.sheetName(0);
+    ASSERT_FALSE(firstSheetName.empty());
+
+    // Test sheetIndex function
+    auto indexOpt = wrapper.sheetIndex(firstSheetName);
+    ASSERT_TRUE(indexOpt.has_value());
+    EXPECT_EQ(indexOpt.value(), 0u);
+
+    // Test with invalid sheet name
+    auto invalidIndexOpt = wrapper.sheetIndex("NonExistentSheet");
+    EXPECT_FALSE(invalidIndexOpt.has_value());
+
+    // Test round-trip: name -> index -> name
+    for (unsigned int i = 0; i < sheetCount; ++i) {
+        std::string name = wrapper.sheetName(i);
+        auto indexOpt = wrapper.sheetIndex(name);
+        ASSERT_TRUE(indexOpt.has_value()) << "Failed to find index for sheet: " << name;
+        EXPECT_EQ(indexOpt.value(), i);
+    }
+
+    wrapper.close();
 }
