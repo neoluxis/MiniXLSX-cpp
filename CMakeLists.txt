@@ -33,10 +33,15 @@ add_library(MiniXLSX SHARED ${MLSX_SRCS})
 target_include_directories(MiniXLSX PUBLIC include)
 
 add_subdirectory(3rdparty/KFZippa)
+
+# 在 Windows/Mingw 下使用 OpenXLSX 共享库，避免静态库符号重复
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows" OR MINGW)
+    set(OPENXLSX_LIBRARY_TYPE "SHARED" CACHE STRING "" FORCE)
+endif()
 add_subdirectory(3rdparty/OpenXLSX)
 
 target_link_libraries(MiniXLSX PUBLIC KFZippa)
-target_link_libraries(MiniXLSX PUBLIC OpenXLSX::OpenXLSX)
+target_link_libraries(MiniXLSX PRIVATE OpenXLSX::OpenXLSX)
 
 # Find system-installed pugixml via pkg-config and link it
 find_package(PkgConfig REQUIRED)

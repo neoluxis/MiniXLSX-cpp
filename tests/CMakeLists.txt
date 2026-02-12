@@ -5,7 +5,7 @@ add_executable(test_minixlsx
     test_style_write_gtest.cpp
 )
 
-target_link_libraries(test_minixlsx PRIVATE MiniXLSX GTest::gtest GTest::gtest_main)
+target_link_libraries(test_minixlsx PRIVATE MiniXLSX OpenXLSX::OpenXLSX GTest::gtest GTest::gtest_main)
 
 # Copy test files to build directory
 configure_file(${CMAKE_SOURCE_DIR}/assets/test.xlsx ${CMAKE_BINARY_DIR}/test.xlsx COPYONLY)
