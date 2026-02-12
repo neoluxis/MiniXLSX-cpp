@@ -10,6 +10,14 @@ namespace cc::neolux::utils::MiniXLSX
         std::string relativePath;
     };
 
+    struct SheetPicture {
+        std::string row;        // 单元格行号，如 "7"
+        std::string col;        // 单元格列号，如 "G"
+        int rowNum;             // 数字行号，如 7
+        int colNum;             // 数字列号，如 7
+        std::string relativePath; // 图片相对于临时目录的路径，如 "media/image1.jpg"
+    };
+
     enum class CellBorderStyle {
         None = 0,
         Thin,

@@ -86,6 +86,15 @@ int main(int argc, char** argv)
         std::cerr << "No picture found at G7 on sheet " << targetSheet << std::endl;
     }
 
+    // Fetch all pictures in the sheet
+    auto allPics = wrapper.fetchAllPicturesInSheet(targetSheet);
+    std::cout << "Found " << allPics.size() << " pictures in sheet '" << targetSheet << "':" << std::endl;
+    for (const auto& pic : allPics) {
+        std::cout << "  Row: " << pic.row << ", Col: " << pic.col 
+                  << " (Num: " << pic.rowNum << "," << pic.colNum << ") "
+                  << "Path: " << pic.relativePath << std::endl;
+    }
+
     // Set G8 background to red and save
     cc::neolux::utils::MiniXLSX::CellStyle cs;
     cs.backgroundColor = "#FF0000"; // red
