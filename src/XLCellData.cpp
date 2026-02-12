@@ -23,7 +23,7 @@ std::string XLCellData::getValue() const
         }
         catch (const std::exception&)
         {
-            // Invalid index
+            // 索引无效
         }
         return "";
     }

@@ -6,6 +6,7 @@
 #include <vector>
 #include "XLWorkbook.hpp"
 #include "OpenXLSXWrapper.hpp"
+#include "XLPictureReader.hpp"
 
 namespace cc::neolux::utils::MiniXLSX
 {
@@ -19,73 +20,77 @@ private:
     std::string xlsxPath;
     XLWorkbook* workbook;
     std::unique_ptr<OpenXLSXWrapper> oxwrapper;
+    std::unique_ptr<XLPictureReader> pictureReader;
 
 public:
     XLDocument();
     ~XLDocument();
 
-    // Access to OpenXLSX wrapper if available
+    // 获取 OpenXLSX 封装（可选）
     OpenXLSXWrapper* getWrapper() const;
 
+    // 获取图片读取器（可选）
+    XLPictureReader* getPictureReader() const;
+
     /**
-     * @brief Opens an XLSX file by unzipping it to a temporary directory.
-     * @param xlsxPath The path to the XLSX file.
-     * @return true if successful, false otherwise.
+        * @brief 打开 XLSX 文件并解压到临时目录。
+        * @param xlsxPath XLSX 文件路径。
+        * @return 成功返回 true，否则返回 false。
      */
     bool open(const std::string& xlsxPath);
 
     /**
-     * @brief Creates a new XLSX file with basic structure.
-     * @param xlsxPath The path where the new XLSX file will be created.
-     * @return true if successful, false otherwise.
+        * @brief 创建一个包含基础结构的 XLSX 文件。
+        * @param xlsxPath 新文件路径。
+        * @return 成功返回 true，否则返回 false。
      */
     bool create(const std::string& xlsxPath);
 
     /**
-     * @brief Closes the document by cleaning up the temporary directory.
+        * @brief 关闭文档并清理临时目录。
      */
     void close();
 
     /**
-     * @brief Close the document safely.
-     * @return true if the document was closed, false if it was modified and could not be closed.
+        * @brief 安全关闭文档。
+        * @return 关闭成功返回 true；若已修改且不允许关闭则返回 false。
      */
     bool close_safe();
 
     /**
-     * @brief Checks if the document is currently open.
-     * @return true if open, false otherwise.
+        * @brief 判断文档是否已打开。
+        * @return 已打开返回 true，否则返回 false。
      */
     bool isOpened() const;
 
     /**
-     * @brief Gets the temporary directory path where the XLSX is extracted.
-     * @return The temporary directory path.
+        * @brief 获取 XLSX 解压后的临时目录路径。
+        * @return 临时目录路径。
      */
     const std::filesystem::path& getTempDir() const;
 
     /**
-     * @brief Gets the workbook associated with this document.
-     * @return Reference to the workbook.
+        * @brief 获取当前文档的工作簿。
+        * @return 工作簿引用。
      */
     XLWorkbook& getWorkbook();
 
 
     /**
-     * @brief Marks the document as modified.
-     * @param xlsxPath The path to the XLSX file.
-     * @return true if successful, false otherwise.
+        * @brief 另存为指定路径。
+        * @param xlsxPath 目标 XLSX 文件路径。
+        * @return 成功返回 true，否则返回 false。
      */
     bool saveAs(const std::string& xlsxPath);
 
     /**
-     * @brief Saves the document if it has been modified.
-     * @return true if successful, false otherwise.
+        * @brief 若已修改则保存文档。
+        * @return 成功返回 true，否则返回 false。
      */
     bool save();
 
     /**
-     * @brief Marks the document as modified.
+        * @brief 标记文档已修改。
      */
     void markModified();
 };

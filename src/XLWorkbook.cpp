@@ -29,15 +29,16 @@ namespace cc::neolux::utils::MiniXLSX
             return false;
         }
 
-        // If OpenXLSX wrapper is available and open, build sheet list from it
+        // 若 OpenXLSX 封装可用，则基于其构建工作表列表
         try {
             OpenXLSXWrapper* w = document->getWrapper();
+            XLPictureReader* pr = document->getPictureReader();
             if (w && w->isOpen()) {
                 unsigned int cnt = w->sheetCount();
                 for (unsigned int i = 0; i < cnt; ++i) {
                     std::string name = w->sheetName(i);
-                    XLSheet* xlSheet = new XLSheet(*this, w, i);
-                    // do not call xlSheet->load() since wrapper will serve cell access
+                    XLSheet* xlSheet = new XLSheet(*this, w, pr, i);
+                    // 不调用 load()，由封装提供单元格访问
                     sheets.push_back(xlSheet);
                     sheetNames.push_back(name);
                 }
@@ -141,7 +142,7 @@ namespace cc::neolux::utils::MiniXLSX
 
     size_t XLWorkbook::getSheetCount() const
     {
-        // Prefer OpenXLSX if available
+        // 优先使用 OpenXLSX 封装
         try {
             OpenXLSXWrapper* w = document->getWrapper();
             if (w && w->isOpen()) return static_cast<size_t>(w->sheetCount());

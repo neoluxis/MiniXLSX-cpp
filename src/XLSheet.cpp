@@ -12,8 +12,6 @@
 #include <unordered_map>
 #include <algorithm>
 #include <pugixml.hpp>
-// OpenXLSX for relationships parsing
-#include "OpenXLSX.hpp"
 #include "cc/neolux/utils/MiniXLSX/Types.hpp"
 
 namespace cc::neolux::utils::MiniXLSX
@@ -35,8 +33,8 @@ namespace cc::neolux::utils::MiniXLSX
     {
     }
 
-    XLSheet::XLSheet(XLWorkbook& wb, OpenXLSXWrapper* wrapper, unsigned int sheetIndex)
-        : workbook(&wb), name(wrapper ? wrapper->sheetName(sheetIndex) : std::string()), sheetId(), rId(), oxWrapper(wrapper), oxSheetIndex(sheetIndex)
+    XLSheet::XLSheet(XLWorkbook& wb, OpenXLSXWrapper* wrapper, XLPictureReader* picReader, unsigned int sheetIndex)
+        : workbook(&wb), name(wrapper ? wrapper->sheetName(sheetIndex) : std::string()), sheetId(), rId(), oxWrapper(wrapper), pictureReader(picReader), oxSheetIndex(sheetIndex)
     {
     }
 
@@ -46,14 +44,14 @@ namespace cc::neolux::utils::MiniXLSX
 
     bool XLSheet::load()
     {
-        // If this sheet is backed by OpenXLSXWrapper, there's no file-based loading here.
+        // 若由 OpenXLSXWrapper 提供数据，则无需从 XML 加载
         if (oxWrapper && oxWrapper->isOpen()) {
             return true;
         }
         namespace fs = std::filesystem;
         fs::path temp = workbook->getDocument().getTempDir();
 
-        // Load shared strings using pugixml
+        // 使用 pugixml 加载共享字符串
         fs::path sharedStringsPath = temp / "xl" / "sharedStrings.xml";
         if (fs::exists(sharedStringsPath))
         {
@@ -64,7 +62,7 @@ namespace cc::neolux::utils::MiniXLSX
                 pugi::xml_node sst = sdoc.child("sst");
                 for (pugi::xml_node si : sst.children("si"))
                 {
-                    // Prefer direct <t> child but handle rich text
+                    // 优先读取 <t>，并兼容富文本
                     pugi::xml_node tnode = si.child("t");
                     if (tnode)
                     {
@@ -83,7 +81,7 @@ namespace cc::neolux::utils::MiniXLSX
             }
         }
 
-        // Find the sheet file path using rId via workbook rels
+        // 通过 rId 在 workbook 关系中定位工作表路径
         fs::path relsPath = temp / "xl" / "_rels" / "workbook.xml.rels";
         pugi::xml_document relsDoc;
         if (!fs::exists(relsPath) || !relsDoc.load_file(relsPath.c_str()))
@@ -118,7 +116,7 @@ namespace cc::neolux::utils::MiniXLSX
             return false;
         }
 
-        // Parse sheetData
+        // 解析 sheetData
         pugi::xml_node worksheet = sheetDoc.child("worksheet");
         pugi::xml_node sheetData = worksheet.child("sheetData");
         if (!sheetData)
@@ -157,7 +155,7 @@ namespace cc::neolux::utils::MiniXLSX
             }
         }
 
-        // Parse drawings (if any) — use OpenXLSX relationships for mapping image rel IDs to targets
+        // 解析图片（若存在），使用关系文件映射图片目标
         pugi::xml_node drawingNode = worksheet.child("drawing");
         if (drawingNode)
         {
@@ -186,64 +184,22 @@ namespace cc::neolux::utils::MiniXLSX
                         fs::path drawingPath = (temp / "xl" / "worksheets" / drawingTarget).lexically_normal();
                         fs::path drawingRelsPath = drawingPath.parent_path() / "_rels" / (drawingPath.filename().string() + ".rels");
 
-                        // Read drawing rels and create OpenXLSX relationships to resolve embed ids
+                        // 读取 drawing 的关系文件，构建图片映射
                         std::unordered_map<std::string, std::string> imageMap;
                         if (fs::exists(drawingRelsPath)) {
-                            std::ifstream drawingRelsFile(drawingRelsPath);
-                            std::string drawingRelsContent((std::istreambuf_iterator<char>(drawingRelsFile)), std::istreambuf_iterator<char>());
-                            drawingRelsFile.close();
-                            // Build imageMap using OpenXLSX XLRelationships
-                            try {
-                                OpenXLSX::XLXmlData tmpRels(nullptr, drawingRelsPath.string());
-                                tmpRels.setRawData(drawingRelsContent);
-                                OpenXLSX::XLRelationships rels(&tmpRels, drawingRelsPath.string());
-                                auto relItems = rels.relationships();
-                                for (const auto &ri : relItems) {
-                                    if (ri.type() == OpenXLSX::XLRelationshipType::Image) {
-                                        imageMap[ri.id()] = ri.target();
-                                    }
-                                }
-                            } catch (...) {
-                                // fallback to manual parsing
-                                std::ifstream drawingRelsFile2(drawingRelsPath);
-                                if (drawingRelsFile2.is_open()) {
-                                    std::string drawingRelsContent2((std::istreambuf_iterator<char>(drawingRelsFile2)), std::istreambuf_iterator<char>());
-                                    drawingRelsFile2.close();
-                                    size_t relPos = 0;
-                                    while ((relPos = drawingRelsContent2.find("<Relationship ", relPos)) != std::string::npos)
-                                    {
-                                        size_t relEnd = drawingRelsContent2.find("/>", relPos);
-                                        if (relEnd == std::string::npos) break;
-                                        std::string relTag = drawingRelsContent2.substr(relPos, relEnd - relPos + 2);
-                                        size_t idStartRel = relTag.find("Id=\"");
-                                        if (idStartRel != std::string::npos)
-                                        {
-                                            idStartRel += 4;
-                                            size_t idEndRel = relTag.find("\"", idStartRel);
-                                            if (idEndRel != std::string::npos)
-                                            {
-                                                std::string id = relTag.substr(idStartRel, idEndRel - idStartRel);
-                                                size_t targetStart = relTag.find("Target=\"");
-                                                if (targetStart != std::string::npos)
-                                                {
-                                                    targetStart += 8;
-                                                    size_t targetEnd = relTag.find("\"", targetStart);
-                                                    if (targetEnd != std::string::npos)
-                                                    {
-                                                        std::string target2 = relTag.substr(targetStart, targetEnd - targetStart);
-                                                        imageMap[id] = target2;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        relPos = relEnd + 2;
+                            pugi::xml_document drelDoc;
+                            if (drelDoc.load_file(drawingRelsPath.c_str())) {
+                                pugi::xml_node droot = drelDoc.child("Relationships");
+                                for (pugi::xml_node rel : droot.children("Relationship")) {
+                                    std::string type = rel.attribute("Type").as_string();
+                                    if (type.find("image") != std::string::npos) {
+                                        imageMap[rel.attribute("Id").as_string()] = rel.attribute("Target").as_string();
                                     }
                                 }
                             }
-
                         }
 
-                        // Read drawing XML and look for <xdr:twoCellAnchor> blocks (same logic as previous parser)
+                        // 读取 drawing XML，查找 <xdr:twoCellAnchor>
                         if (fs::exists(drawingPath)) {
                             std::ifstream drawingFile(drawingPath);
                             std::string drawingContent((std::istreambuf_iterator<char>(drawingFile)), std::istreambuf_iterator<char>());
@@ -257,7 +213,7 @@ namespace cc::neolux::utils::MiniXLSX
 
                                 std::string anchorTag = drawingContent.substr(anchorPos, anchorEnd - anchorPos + 20);
 
-                                // Extract from col and row
+                                // 提取起始列与行
                                 size_t fromPos = anchorTag.find("<xdr:from>");
                                 int fromCol = -1, fromRow = -1;
                                 if (fromPos != std::string::npos)
@@ -284,7 +240,7 @@ namespace cc::neolux::utils::MiniXLSX
                                     }
                                 }
 
-                                // Extract embed
+                                // 提取嵌入关系 ID
                                 size_t embedPos = anchorTag.find("r:embed=\"");
                                 std::string embedId;
                                 if (embedPos != std::string::npos)
@@ -303,7 +259,7 @@ namespace cc::neolux::utils::MiniXLSX
                                     auto it = imageMap.find(embedId);
                                     if (it != imageMap.end())
                                     {
-                                        std::string imageTarget = it->second; // e.g., "../media/image1.jpg"
+                                        std::string imageTarget = it->second; // 例如 "../media/image1.jpg"
                                         std::filesystem::path imagePath(imageTarget);
                                         std::string imageFileName = imagePath.filename().string();
                                         std::string relPath = imagePath.parent_path().string();
@@ -334,15 +290,17 @@ namespace cc::neolux::utils::MiniXLSX
 
     const XLCell* XLSheet::getCell(const std::string& ref) const
     {
-        // If wrapper-backed, try to fetch via wrapper on-demand and cache
+        // 若由封装提供数据，则按需获取并缓存
         if (oxWrapper && oxWrapper->isOpen()) {
-            // Ensure pictures are loaded into the cache once
+            // 仅在首次访问时加载图片缓存
             if (!picturesLoaded) {
                 try {
-                    auto pics = oxWrapper->getPictures(oxSheetIndex);
-                    auto nonConstThis = const_cast<XLSheet*>(this);
-                    for (const auto &pi : pics) {
-                        nonConstThis->cells[pi.ref] = std::make_unique<XLCellPicture>(pi.ref, pi.fileName, pi.relativePath);
+                    if (pictureReader) {
+                        auto pics = pictureReader->getPictures(oxSheetIndex);
+                        auto nonConstThis = const_cast<XLSheet*>(this);
+                        for (const auto &pi : pics) {
+                            nonConstThis->cells[pi.ref] = std::make_unique<XLCellPicture>(pi.ref, pi.fileName, pi.relativePath);
+                        }
                     }
                 } catch (...) {}
                 picturesLoaded = true;
@@ -352,7 +310,7 @@ namespace cc::neolux::utils::MiniXLSX
             if (it != cells.end()) return it->second.get();
             auto v = oxWrapper->getCellValue(oxSheetIndex, ref);
             if (v.has_value()) {
-                // create a mutable copy of cells (const method: use const_cast hack to cache)
+                // 在 const 方法中创建可变缓存
                 auto nonConstThis = const_cast<XLSheet*>(this);
                 nonConstThis->cells[ref] = std::make_unique<XLCellData>(ref, v.value(), std::string("str"), std::vector<std::string>());
                 return nonConstThis->cells[ref].get();
@@ -360,7 +318,7 @@ namespace cc::neolux::utils::MiniXLSX
             return nullptr;
         }
 
-        // Fallback: if wrapper didn't provide picture info, try parsing the unzipped temp files
+        // 兜底：若封装未提供图片信息，尝试从解压目录解析
         try {
             namespace fs = std::filesystem;
             fs::path temp = workbook->getDocument().getTempDir();
@@ -486,7 +444,7 @@ namespace cc::neolux::utils::MiniXLSX
     void XLSheet::setCellValue(const std::string& ref, const std::string& value, const std::string& type)
     {
         if (oxWrapper && oxWrapper->isOpen()) {
-            // Delegate to wrapper
+            // 委托给封装处理
             oxWrapper->setCellValue(oxSheetIndex, ref, value);
             workbook->getDocument().markModified();
             return;
@@ -495,7 +453,7 @@ namespace cc::neolux::utils::MiniXLSX
         auto it = cells.find(ref);
         if (it != cells.end())
         {
-            // Cell exists, update it if it's XLCellData
+            // 单元格存在则更新
             XLCellData* dataCell = dynamic_cast<XLCellData*>(it->second.get());
             if (dataCell)
             {
@@ -505,17 +463,17 @@ namespace cc::neolux::utils::MiniXLSX
         }
         else
         {
-            // Cell doesn't exist, create it
+            // 单元格不存在则创建
             cells[ref] = std::make_unique<XLCellData>(ref, value, type, sharedStrings);
         }
         
-        // Mark document as modified
+        // 标记文档已修改
         workbook->getDocument().markModified();
     }
 
     bool XLSheet::save()
     {
-        // Find the sheet file path using rId
+        // 通过 rId 定位工作表文件路径
         std::filesystem::path relsPath = workbook->getDocument().getTempDir() / "xl" / "_rels" / "workbook.xml.rels";
         
         std::ifstream relsFile(relsPath);
@@ -573,7 +531,7 @@ namespace cc::neolux::utils::MiniXLSX
 
         std::filesystem::path sheetPath = workbook->getDocument().getTempDir() / "xl" / target;
 
-        // Read the current sheet content
+        // 读取当前工作表内容
         std::ifstream sheetFile(sheetPath);
         if (!sheetFile.is_open())
         {
@@ -584,7 +542,7 @@ namespace cc::neolux::utils::MiniXLSX
         std::string sheetContent((std::istreambuf_iterator<char>(sheetFile)), std::istreambuf_iterator<char>());
         sheetFile.close();
 
-        // Find sheetData section
+        // 查找 sheetData 段
         size_t dataPos = sheetContent.find("<sheetData>");
         if (dataPos == std::string::npos)
         {
@@ -599,13 +557,13 @@ namespace cc::neolux::utils::MiniXLSX
             return false;
         }
 
-        // Build new sheetData content
+        // 构建新的 sheetData 内容
         std::string newSheetData = "<sheetData>\n";
 
-        // Process existing cells and add/update our cells
+        // 处理已有单元格并合并更新
         std::map<std::string, std::string> cellXmlMap;
 
-        // Parse existing cells
+        // 解析已有单元格
         std::string dataSection = sheetContent.substr(dataPos, dataEnd - dataPos + 13);
         size_t cellPos = 0;
         while ((cellPos = dataSection.find("<c ", cellPos)) != std::string::npos)
@@ -625,7 +583,7 @@ namespace cc::neolux::utils::MiniXLSX
 
             std::string cellTag = dataSection.substr(cellPos, tagEnd - cellPos + 1);
 
-            // Extract r
+            // 提取 r
             size_t rStart = cellTag.find("r=\"");
             std::string ref;
             if (rStart != std::string::npos)
@@ -646,20 +604,20 @@ namespace cc::neolux::utils::MiniXLSX
             cellPos = tagEnd + 1;
         }
 
-        // Update with our cell data
+        // 合并当前内存中的单元格数据
         for (const auto& cellPair : cells)
         {
             const std::string& ref = cellPair.first;
             const XLCell* cell = cellPair.second.get();
             
-            // Only save XLCellData cells (not pictures)
+            // 仅保存 XLCellData（不保存图片单元格）
             const XLCellData* dataCell = dynamic_cast<const XLCellData*>(cell);
             if (dataCell)
             {
                 std::string type = dataCell->getType();
                 std::string value = dataCell->getValue();
                 
-                // Create XML for this cell
+                // 生成单元格 XML
                 std::string cellXml = "<c r=\"" + ref + "\"";
                 if (!type.empty())
                 {
@@ -678,11 +636,11 @@ namespace cc::neolux::utils::MiniXLSX
             }
         }
 
-        // Sort cells by reference for proper ordering
+        // 按引用排序
         std::vector<std::pair<std::string, std::string>> sortedCells(cellXmlMap.begin(), cellXmlMap.end());
         std::sort(sortedCells.begin(), sortedCells.end());
 
-        // Build the new sheetData
+        // 拼接新的 sheetData
         for (const auto& cellPair : sortedCells)
         {
             newSheetData += cellPair.second;
@@ -690,10 +648,10 @@ namespace cc::neolux::utils::MiniXLSX
 
         newSheetData += "</sheetData>";
 
-        // Replace the sheetData section
+        // 替换 sheetData 段
         std::string newSheetContent = sheetContent.substr(0, dataPos) + newSheetData + sheetContent.substr(dataEnd + 13);
 
-        // Write back to file
+        // 写回文件
         std::ofstream outSheetFile(sheetPath);
         if (!outSheetFile.is_open())
         {

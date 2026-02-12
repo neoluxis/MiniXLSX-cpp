@@ -18,6 +18,7 @@ set(MLSX_SRCS
     src/XLSheet.cpp
     src/XLCellData.cpp
     src/XLCellPicture.cpp
+    src/XLPictureReader.cpp
     src/XLTemplate.cpp
     src/OpenXLSXWrapper.cpp
     src/MiniXLSX.cpp

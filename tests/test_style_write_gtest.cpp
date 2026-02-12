@@ -9,7 +9,7 @@ TEST(MiniXLSX_StyleWrite, ApplyBasicFillAndBorder)
 {
     const std::string out = "test_style_write.xlsx"; // written in build dir
 
-    // Create base file with OpenXLSX
+    // 使用 OpenXLSX 创建基础文件
     {
         OpenXLSX::XLDocument doc;
         doc.create(out, true);
@@ -20,7 +20,7 @@ TEST(MiniXLSX_StyleWrite, ApplyBasicFillAndBorder)
         doc.close();
     }
 
-    // Apply style via MiniXLSX facade
+    // 通过 MiniXLSX 接口设置样式
     {
         MiniXLSX api;
         ASSERT_TRUE(api.open(out));
@@ -33,7 +33,7 @@ TEST(MiniXLSX_StyleWrite, ApplyBasicFillAndBorder)
         api.close();
     }
 
-    // Reopen with OpenXLSX and verify style
+    // 使用 OpenXLSX 重新打开并校验样式
     {
         OpenXLSX::XLDocument doc;
         doc.open(out);

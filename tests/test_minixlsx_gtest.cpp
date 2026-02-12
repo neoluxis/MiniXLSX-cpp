@@ -12,7 +12,7 @@ TEST(MiniXLSX_Open, OpensValidFile) {
     for (auto p : candidates) {
         if (doc.open(p)) { opened = true; break; }
     }
-    // Try absolute locations based on current working directory
+    // 尝试基于当前工作目录的绝对路径
     if (!opened) {
         try {
             auto cwd = std::filesystem::current_path();
@@ -85,24 +85,24 @@ TEST(MiniXLSX_Wrapper, SheetIndexLookup) {
         GTEST_SKIP() << "test.xlsx not available, skipping";
     }
 
-    // Test that we can find sheet index by name
+    // 验证可以通过名称查找索引
     unsigned int sheetCount = wrapper.sheetCount();
     ASSERT_GE(sheetCount, 1u);
 
-    // Get the first sheet name
+    // 获取首个工作表名称
     std::string firstSheetName = wrapper.sheetName(0);
     ASSERT_FALSE(firstSheetName.empty());
 
-    // Test sheetIndex function
+    // 测试 sheetIndex
     auto indexOpt = wrapper.sheetIndex(firstSheetName);
     ASSERT_TRUE(indexOpt.has_value());
     EXPECT_EQ(indexOpt.value(), 0u);
 
-    // Test with invalid sheet name
+    // 测试无效工作表名称
     auto invalidIndexOpt = wrapper.sheetIndex("NonExistentSheet");
     EXPECT_FALSE(invalidIndexOpt.has_value());
 
-    // Test round-trip: name -> index -> name
+    // 测试 name -> index -> name 的往返一致性
     for (unsigned int i = 0; i < sheetCount; ++i) {
         std::string name = wrapper.sheetName(i);
         auto indexOpt = wrapper.sheetIndex(name);

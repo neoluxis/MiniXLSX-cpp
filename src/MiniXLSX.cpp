@@ -1,25 +1,36 @@
 #include "cc/neolux/utils/MiniXLSX/MiniXLSX.hpp"
 #include "cc/neolux/utils/MiniXLSX/OpenXLSXWrapper.hpp"
+#include "cc/neolux/utils/MiniXLSX/XLPictureReader.hpp"
 #include <memory>
 
 namespace cc::neolux::utils::MiniXLSX
 {
     struct MiniXLSX::Impl {
         std::unique_ptr<OpenXLSXWrapper> wrapper;
+        std::unique_ptr<XLPictureReader> pictures;
     };
 
-    MiniXLSX::MiniXLSX() : impl_(new Impl()) { impl_->wrapper = std::make_unique<OpenXLSXWrapper>(); }
+    MiniXLSX::MiniXLSX() : impl_(new Impl())
+    {
+        impl_->wrapper = std::make_unique<OpenXLSXWrapper>();
+        impl_->pictures = std::make_unique<XLPictureReader>();
+    }
 
     MiniXLSX::~MiniXLSX() { close(); delete impl_; }
 
     bool MiniXLSX::open(const std::string& path)
     {
-        return impl_->wrapper->open(path);
+        bool ok = impl_->wrapper->open(path);
+        if (ok && impl_->pictures) {
+            impl_->pictures->open(path);
+        }
+        return ok;
     }
 
     void MiniXLSX::close()
     {
         if (impl_->wrapper) impl_->wrapper->close();
+        if (impl_->pictures) impl_->pictures->close();
     }
 
     bool MiniXLSX::isOpen() const
@@ -49,7 +60,8 @@ namespace cc::neolux::utils::MiniXLSX
 
     std::vector<PictureInfo> MiniXLSX::getPictures(unsigned int sheetIndex) const
     {
-        return impl_->wrapper->getPictures(sheetIndex);
+        if (!impl_->pictures) return {};
+        return impl_->pictures->getPictures(sheetIndex);
     }
 
 } // namespace cc::neolux::utils::MiniXLSX

@@ -3,7 +3,6 @@
 #include <vector>
 #include <string>
 #include "cc/neolux/utils/MiniXLSX/OpenXLSXWrapper.hpp"
-#include "OpenXLSX.hpp"
 #include "cc/neolux/utils/MiniXLSX/XLPictureReader.hpp"
 
 #include <cstdint>
@@ -19,11 +18,19 @@ int main(int argc, char **argv)
 
     std::string path = argv[1];
     cc::neolux::utils::MiniXLSX::OpenXLSXWrapper wrapper;
+    cc::neolux::utils::MiniXLSX::XLPictureReader pictures;
 
     if (!wrapper.open(path))
     {
         std::cerr << "Failed to open input xlsx: " << path << std::endl;
         return 2;
+    }
+
+    if (!pictures.open(path))
+    {
+        std::cerr << "Failed to prepare picture reader for: " << path << std::endl;
+        wrapper.close();
+        return 4;
     }
 
     // 通过名称查找工作表索引
@@ -96,7 +103,7 @@ int main(int argc, char **argv)
     // }
 
     // 获取工作表图片列表
-    auto allPics = wrapper.fetchAllPicturesInSheet(targetSheet);
+    auto allPics = pictures.getSheetPictures(static_cast<unsigned int>(sheetIndex));
     std::cout << "Found " << allPics.size() << " pictures in sheet '" << targetSheet << "':" << std::endl;
     for (const auto &pic : allPics)
     {
@@ -108,13 +115,6 @@ int main(int argc, char **argv)
     // 测试：写入 G7 并保存
     std::cout << "Setting text '[D]' in cell G7 (empty cell, not containing a picture) and SAVING..." << std::endl;
     if (!wrapper.setCellValue(static_cast<unsigned int>(sheetIndex), "G7", "[D]"))
-    cc::neolux::utils::MiniXLSX::XLPictureReader pictures;
-    if (!pictures.open(path)) {
-        std::cerr << "Failed to prepare picture reader for: " << path << std::endl;
-        wrapper.close();
-        return 4;
-    }
-
     {
         std::cerr << "Failed to set cell value for G7" << std::endl;
     }
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
 
     // 设置 G8 背景色为红色
     std::cout << "Setting cell G8 background color to red (#FF0000) and saving..." << std::endl;
-    // load original style if any to preserve other attributes
+    // 若存在原始样式则尽量保留其它属性
     cc::neolux::utils::MiniXLSX::CellStyle style;
     style.backgroundColor = "#FF0000"; // red
     if (wrapper.setCellStyle(static_cast<unsigned int>(sheetIndex), "G8", style))
@@ -162,7 +162,9 @@ int main(int argc, char **argv)
 
     // 保存后重新读取图片列表
     std::cout << "After save, checking if pictures are still detectable..." << std::endl;
-    auto allPicsAfterSave = wrapper.fetchAllPicturesInSheet(targetSheet);
+    pictures.close();
+    pictures.open(path);
+    auto allPicsAfterSave = pictures.getSheetPictures(static_cast<unsigned int>(sheetIndex));
     std::cout << "Found " << allPicsAfterSave.size() << " pictures in sheet '" << targetSheet << "' after save:" << std::endl;
     for (const auto &pic : allPicsAfterSave)
     {
@@ -171,8 +173,8 @@ int main(int argc, char **argv)
                   << "Path: " << pic.relativePath << std::endl;
     }
 
-    // Manually cleanup temp directory when done
-    wrapper.cleanupTempDir();
+    // 释放图片读取器资源
+    pictures.close();
 
     wrapper.close();
     return 0;

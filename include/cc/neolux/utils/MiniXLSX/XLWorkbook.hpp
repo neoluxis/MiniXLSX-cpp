@@ -22,40 +22,40 @@ namespace cc::neolux::utils::MiniXLSX
         ~XLWorkbook();
 
         /**
-         * @brief Loads the workbook data from the document.
-         * @return true if successful, false otherwise.
+         * @brief 从文档加载工作簿数据。
+         * @return 成功返回 true，否则返回 false。
          */
         bool load();
 
         /**
-         * @brief Saves all sheets in the workbook.
-         * @return true if successful, false otherwise.
+         * @brief 保存工作簿中的所有工作表。
+         * @return 成功返回 true，否则返回 false。
          */
         bool save();
 
         /**
-         * @brief Gets the number of sheets in the workbook.
-         * @return The number of sheets.
+         * @brief 获取工作簿的工作表数量。
+         * @return 工作表数量。
          */
         size_t getSheetCount() const;
 
         /**
-         * @brief Gets the name of the sheet at the given index.
-         * @param index The index of the sheet.
-         * @return The sheet name.
+         * @brief 获取指定索引的工作表名称。
+         * @param index 工作表索引。
+         * @return 工作表名称。
          */
         const std::string &getSheetName(size_t index) const;
 
         /**
-         * @brief Gets the sheet at the given index.
-         * @param index The index of the sheet.
-         * @return Reference to the sheet.
+         * @brief 获取指定索引的工作表。
+         * @param index 工作表索引。
+         * @return 工作表引用。
          */
         XLSheet &getSheet(size_t index);
 
         /**
-         * @brief Gets the document associated with this workbook.
-         * @return Reference to the document.
+         * @brief 获取关联的文档对象。
+         * @return 文档引用。
          */
         XLDocument &getDocument() const;
     }; // Added semicolon here
