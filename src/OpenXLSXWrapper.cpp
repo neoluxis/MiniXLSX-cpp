@@ -17,10 +17,38 @@ namespace cc::neolux::utils::MiniXLSX
     struct OpenXLSXWrapper::Impl {
         std::unique_ptr<OpenXLSX::XLDocument> doc;
         std::string openedPath;
+        std::string tempDir; // Temporary directory for unzipped content
     };
 
     OpenXLSXWrapper::OpenXLSXWrapper() : impl_(new Impl()) {}
     OpenXLSXWrapper::~OpenXLSXWrapper() { close(); delete impl_; }
+
+    bool OpenXLSXWrapper::ensureTempDir() const
+    {
+        if (!impl_->tempDir.empty()) return true; // Already exists
+        if (!impl_->doc) return false;
+        try {
+            namespace fs = std::filesystem;
+            fs::path tmp = fs::temp_directory_path() / ("minixlsx_unzip_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+            fs::create_directories(tmp);
+            if (cc::neolux::utils::KFZippa::unzip(impl_->openedPath, tmp.string())) {
+                impl_->tempDir = tmp.string();
+                return true;
+            }
+        } catch (...) {}
+        return false;
+    }
+
+    void OpenXLSXWrapper::cleanupTempDir()
+    {
+        if (!impl_->tempDir.empty()) {
+            try {
+                namespace fs = std::filesystem;
+                fs::remove_all(impl_->tempDir);
+            } catch (...) {}
+            impl_->tempDir.clear();
+        }
+    }
 
     bool OpenXLSXWrapper::open(const std::string& path)
     {
@@ -43,6 +71,7 @@ namespace cc::neolux::utils::MiniXLSX
             try { impl_->doc->close(); } catch (...) {}
             impl_->doc.reset();
         }
+        cleanupTempDir();
     }
 
     bool OpenXLSXWrapper::isOpen() const
@@ -188,11 +217,7 @@ namespace cc::neolux::utils::MiniXLSX
         std::vector<PictureInfo> out;
         if (!impl_->doc) return out;
         try {
-            namespace fs = std::filesystem;
-            // Unzip to temp dir and parse drawing XML similarly to XLSheet::load
-            fs::path tmp = fs::temp_directory_path() / ("minixlsx_unzip_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
-            try { fs::create_directories(tmp); } catch(...) {}
-            if (!cc::neolux::utils::KFZippa::unzip(impl_->openedPath, tmp.string())) {
+            if (!ensureTempDir()) {
                 // failed to extract, fallback to content types scan
                 OpenXLSX::XLZipArchive za;
                 za.open(impl_->openedPath);
@@ -214,7 +239,11 @@ namespace cc::neolux::utils::MiniXLSX
                     }
                 }
                 return out;
-            } else {
+            }
+
+            namespace fs = std::filesystem;
+            fs::path tmp(impl_->tempDir);
+            {
                 // Attempt to load worksheet file by index (sheetN.xml)
                 std::string sheetFile = "sheet" + std::to_string(sheetIndex + 1) + ".xml";
                 fs::path sheetPath = tmp / "xl" / "worksheets" / sheetFile;
@@ -366,9 +395,6 @@ namespace cc::neolux::utils::MiniXLSX
                     }
                 }
             }
-
-            // cleanup
-            try { std::filesystem::remove_all(tmp); } catch(...) {}
         } catch (...) {}
         return out;
     }
@@ -390,14 +416,12 @@ namespace cc::neolux::utils::MiniXLSX
 
         // Get pictures using existing logic, but parse to extract row/col details
         try {
-            namespace fs = std::filesystem;
-            // Unzip to temp dir and parse drawing XML similarly to XLSheet::load
-            fs::path tmp = fs::temp_directory_path() / ("minixlsx_unzip_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
-            try { fs::create_directories(tmp); } catch(...) {}
-            if (!cc::neolux::utils::KFZippa::unzip(impl_->openedPath, tmp.string())) {
-                // If unzip fails, cannot parse XML, return empty
-                return out;
+            if (!ensureTempDir()) {
+                return out; // Failed to extract
             }
+
+            namespace fs = std::filesystem;
+            fs::path tmp(impl_->tempDir);
 
             // Attempt to load worksheet file by index (sheetN.xml)
             std::string sheetFile = "sheet" + std::to_string(sheetIndex + 1) + ".xml";
@@ -551,9 +575,6 @@ namespace cc::neolux::utils::MiniXLSX
                     }
                 }
             }
-
-            // cleanup
-            try { std::filesystem::remove_all(tmp); } catch(...) {}
         } catch (...) {}
         return out;
     }

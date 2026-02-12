@@ -29,8 +29,10 @@ namespace cc::neolux::utils::MiniXLSX
         std::vector<PictureInfo> getPictures(unsigned int sheetIndex) const;
         std::vector<SheetPicture> fetchAllPicturesInSheet(const std::string& sheetName) const;
         std::optional<std::vector<uint8_t>> getPictureRaw(unsigned int sheetIndex, const std::string& ref) const;
+        void cleanupTempDir();
 
     private:
+        bool ensureTempDir() const;
         struct Impl;
         Impl* impl_;
     };

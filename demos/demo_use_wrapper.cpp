@@ -9,18 +9,17 @@
 
 int main(int argc, char** argv)
 {
-    const char* candidates[] = {"test.xlsx", "build/test.xlsx", "tests/../test.xlsx"};
-    std::string path;
-    bool opened = false;
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <xlsx_file_path>" << std::endl;
+        std::cerr << "Example: " << argv[0] << " test.xlsx" << std::endl;
+        return 1;
+    }
+
+    std::string path = argv[1];
     cc::neolux::utils::MiniXLSX::OpenXLSXWrapper wrapper;
 
-    for (auto p : candidates) {
-        try {
-            if (wrapper.open(p)) { path = p; opened = true; break; }
-        } catch(...) {}
-    }
-    if (!opened) {
-        std::cerr << "Failed to open input xlsx. Provide test.xlsx in repo root or build/" << std::endl;
+    if (!wrapper.open(path)) {
+        std::cerr << "Failed to open input xlsx: " << path << std::endl;
         return 2;
     }
 
@@ -109,6 +108,9 @@ int main(int argc, char** argv)
     auto v = wrapper.getCellValue(static_cast<unsigned int>(sheetIndex), "G8");
     if (v.has_value()) std::cout << "G8=" << v.value() << std::endl;
     else std::cout << "G8 empty" << std::endl;
+
+    // Manually cleanup temp directory when done
+    wrapper.cleanupTempDir();
 
     wrapper.close();
     return 0;
