@@ -21,6 +21,7 @@ namespace cc::neolux::utils::MiniXLSX
 
         unsigned int sheetCount() const;
         std::string sheetName(unsigned int index) const;
+        std::optional<unsigned int> sheetIndex(const std::string& sheetName) const;
 
         std::optional<std::string> getCellValue(unsigned int sheetIndex, const std::string& ref) const;
         bool setCellValue(unsigned int sheetIndex, const std::string& ref, const std::string& value);

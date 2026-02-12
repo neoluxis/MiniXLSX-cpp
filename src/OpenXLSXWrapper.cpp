@@ -97,6 +97,20 @@ namespace cc::neolux::utils::MiniXLSX
         return std::string();
     }
 
+    std::optional<unsigned int> OpenXLSXWrapper::sheetIndex(const std::string& sheetName) const
+    {
+        if (!impl_->doc) return std::nullopt;
+        try {
+            auto names = impl_->doc->workbook().sheetNames();
+            for (unsigned int i = 0; i < names.size(); ++i) {
+                if (std::string(names[i]) == sheetName) {
+                    return i;
+                }
+            }
+        } catch (...) {}
+        return std::nullopt;
+    }
+
     std::optional<std::string> OpenXLSXWrapper::getCellValue(unsigned int sheetIndex, const std::string& ref) const
     {
         if (!impl_->doc) return std::nullopt;
@@ -231,17 +245,12 @@ namespace cc::neolux::utils::MiniXLSX
         if (!impl_->doc) return out;
 
         // Find sheet index by name
-        int sheetIndex = -1;
-        for (unsigned int i = 0; i < sheetCount(); ++i) {
-            if (this->sheetName(i) == sheetName) {
-                sheetIndex = static_cast<int>(i);
-                break;
-            }
-        }
-        if (sheetIndex < 0) return out;
+        auto sheetIndexOpt = sheetIndex(sheetName);
+        if (!sheetIndexOpt.has_value()) return out;
+        unsigned int sheetIndex = sheetIndexOpt.value();
 
         // Find the drawing file for this sheet
-        std::string drawingPath = findDrawingPathForSheet(static_cast<unsigned int>(sheetIndex));
+        std::string drawingPath = findDrawingPathForSheet(sheetIndex);
         if (drawingPath.empty()) return out;
 
         // Parse drawing XML directly
