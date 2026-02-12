@@ -8,8 +8,8 @@ add_executable(test_minixlsx
 target_link_libraries(test_minixlsx PRIVATE MiniXLSX OpenXLSX::OpenXLSX GTest::gtest GTest::gtest_main)
 
 # Copy test files to build directory
-configure_file(${CMAKE_SOURCE_DIR}/assets/test.xlsx ${CMAKE_BINARY_DIR}/test.xlsx COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/assets/empty_xlsx.xlsx ${CMAKE_BINARY_DIR}/empty_xlsx.xlsx COPYONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../assets/test.xlsx ${CMAKE_BINARY_DIR}/test.xlsx COPYONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../assets/empty_xlsx.xlsx ${CMAKE_BINARY_DIR}/empty_xlsx.xlsx COPYONLY)
 
-enable_testing()
+enable_testing().
 add_test(NAME minixlsx_tests COMMAND test_minixlsx)

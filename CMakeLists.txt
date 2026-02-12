@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.11)
 
 project(MiniXLSX)
 
-option(MiniXLSX_BUILD_TEST "Build MiniXLSX test applications" ON)
-option(MiniXLSX_BUILD_DEMO "Build MiniXLSX demo applications" ON)
-option(MiniXLSX_BUILD_TOOL "Build MiniXLSX tool applications" ON)
+option(MiniXLSX_BUILD_TEST "Build MiniXLSX test applications" OFF)
+option(MiniXLSX_BUILD_DEMO "Build MiniXLSX demo applications" OFF)
+option(MiniXLSX_BUILD_TOOL "Build MiniXLSX tool applications" OFF)
 
 
 set(CMAKE_CXX_STANDARD 20)
