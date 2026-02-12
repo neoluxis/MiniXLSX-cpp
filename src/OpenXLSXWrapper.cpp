@@ -407,67 +407,20 @@ namespace cc::neolux::utils::MiniXLSX
 
         namespace fs = std::filesystem;
         fs::path tmp(impl_->tempDir);
-
-        // Attempt to load worksheet file by index (sheetN.xml)
-        std::string sheetFile = "sheet" + std::to_string(sheetIndex + 1) + ".xml";
-        fs::path sheetPath = tmp / "xl" / "worksheets" / sheetFile;
-        if (!fs::exists(sheetPath)) {
-            // try workbook rels to map sheet index to target
-            fs::path relsPath = tmp / "xl" / "_rels" / "workbook.xml.rels";
-            if (fs::exists(relsPath)) {
-                pugi::xml_document relsDoc;
-                if (relsDoc.load_file(relsPath.c_str())) {
-                    pugi::xml_node root = relsDoc.child("Relationships");
-                    unsigned int idx = 0;
-                    for (pugi::xml_node rel : root.children("Relationship")) {
-                        if (rel.attribute("Type").as_string() == std::string("http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet")) {
-                            if (idx == sheetIndex) {
-                                std::string target = rel.attribute("Target").as_string();
-                                sheetPath = (tmp / "xl" / target).lexically_normal();
-                                break;
-                            }
-                            ++idx;
-                        }
-                    }
-                }
+        // We will NOT read the sheet XML relationships to find the drawing.
+        // Instead assume sheet index N -> sheetN.xml and drawingN.xml under xl/drawings.
+        // Construct expected drawing path directly: xl/drawings/drawing{N}.xml
+        std::string drawingFile = "drawings/drawing" + std::to_string(sheetIndex + 1) + ".xml";
+        fs::path drawingPath = tmp / "xl" / drawingFile;
+        if (!fs::exists(drawingPath)) {
+            // fallback: some files may use different numbering; also check drawings/drawing1.xml if index out-of-range
+            if (sheetIndex == 0) {
+                fs::path alt = tmp / "xl" / "drawings" / "drawing1.xml";
+                if (fs::exists(alt)) drawingPath = alt;
             }
         }
 
-        if (!fs::exists(sheetPath)) return "";
-
-        pugi::xml_document sheetDoc;
-        if (!sheetDoc.load_file(sheetPath.c_str())) return "";
-
-        pugi::xml_node worksheet = sheetDoc.child("worksheet");
-        pugi::xml_node drawingNode = worksheet.child("drawing");
-        if (!drawingNode) return "";
-
-        std::string drawingRId = drawingNode.attribute("r:id").as_string();
-
-        // find drawing target in sheet rels
-        fs::path sheetRelsPath = sheetPath.parent_path() / "_rels" / (sheetPath.filename().string() + ".rels");
-        std::string drawingTarget;
-        if (fs::exists(sheetRelsPath)) {
-            pugi::xml_document sheetRelsDoc;
-            if (sheetRelsDoc.load_file(sheetRelsPath.c_str())) {
-                pugi::xml_node sroot = sheetRelsDoc.child("Relationships");
-                for (pugi::xml_node rel : sroot.children("Relationship")) {
-                    if (std::string(rel.attribute("Id").as_string()) == drawingRId) {
-                        drawingTarget = rel.attribute("Target").as_string();
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (drawingTarget.empty()) return "";
-
-        fs::path drawingPath;
-        try {
-            drawingPath = (sheetPath.parent_path() / drawingTarget).lexically_normal();
-        } catch(...) {
-            drawingPath = (tmp / "xl" / drawingTarget).lexically_normal();
-        }
+        if (!fs::exists(drawingPath)) return "";
 
         return drawingPath.string().substr(tmp.string().size() + 1); // Return relative path from temp dir
     }
