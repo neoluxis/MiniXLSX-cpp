@@ -39,6 +39,12 @@ namespace cc::neolux::utils::MiniXLSX
         return false;
     }
 
+    std::string OpenXLSXWrapper::getTempDir() const
+    {
+        if (!ensureTempDir()) return "";
+        return impl_->tempDir;
+    }
+
     void OpenXLSXWrapper::cleanupTempDir()
     {
         if (!impl_->tempDir.empty()) {
