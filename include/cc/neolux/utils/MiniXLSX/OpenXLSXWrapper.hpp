@@ -33,6 +33,9 @@ namespace cc::neolux::utils::MiniXLSX
 
     private:
         bool ensureTempDir() const;
+        std::vector<PictureInfo> parseDrawingXML(const std::string& drawingPath) const;
+        std::vector<SheetPicture> parseDrawingXMLForSheetPictures(const std::string& drawingPath) const;
+        std::string findDrawingPathForSheet(unsigned int sheetIndex) const;
         struct Impl;
         Impl* impl_;
     };

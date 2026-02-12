@@ -216,187 +216,13 @@ namespace cc::neolux::utils::MiniXLSX
     {
         std::vector<PictureInfo> out;
         if (!impl_->doc) return out;
-        try {
-            if (!ensureTempDir()) {
-                // failed to extract, fallback to content types scan
-                OpenXLSX::XLZipArchive za;
-                za.open(impl_->openedPath);
-                std::string ctRaw = za.getEntry("[Content_Types].xml");
-                if (ctRaw.empty()) return out;
-                OpenXLSX::XLXmlData tmpXml(nullptr, "[Content_Types].xml");
-                tmpXml.setRawData(ctRaw);
-                OpenXLSX::XLContentTypes contentTypes(&tmpXml);
-                auto items = contentTypes.getContentItems();
-                for (const auto &item : items) {
-                    std::string path = item.path();
-                    if (path.rfind("xl/media/", 0) == 0) {
-                        PictureInfo pi;
-                        pi.relativePath = path;
-                        auto pos = path.find_last_of('/');
-                        if (pos != std::string::npos) pi.fileName = path.substr(pos + 1);
-                        else pi.fileName = path;
-                        out.push_back(pi);
-                    }
-                }
-                return out;
-            }
 
-            namespace fs = std::filesystem;
-            fs::path tmp(impl_->tempDir);
-            {
-                // Attempt to load worksheet file by index (sheetN.xml)
-                std::string sheetFile = "sheet" + std::to_string(sheetIndex + 1) + ".xml";
-                fs::path sheetPath = tmp / "xl" / "worksheets" / sheetFile;
-                if (!fs::exists(sheetPath)) {
-                    // try workbook rels to map sheet index to target
-                    fs::path relsPath = tmp / "xl" / "_rels" / "workbook.xml.rels";
-                    if (fs::exists(relsPath)) {
-                        pugi::xml_document relsDoc;
-                        if (relsDoc.load_file(relsPath.c_str())) {
-                            pugi::xml_node root = relsDoc.child("Relationships");
-                            unsigned int idx = 0;
-                            for (pugi::xml_node rel : root.children("Relationship")) {
-                                if (rel.attribute("Type").as_string() == std::string("http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet")) {
-                                    if (idx == sheetIndex) {
-                                        std::string target = rel.attribute("Target").as_string();
-                                        sheetPath = (tmp / "xl" / target).lexically_normal();
-                                        break;
-                                    }
-                                    ++idx;
-                                }
-                            }
-                        }
-                    }
-                }
+        // Find the drawing file for this sheet
+        std::string drawingPath = findDrawingPathForSheet(sheetIndex);
+        if (drawingPath.empty()) return out;
 
-                if (fs::exists(sheetPath)) {
-                    pugi::xml_document sheetDoc;
-                    if (sheetDoc.load_file(sheetPath.c_str())) {
-                        pugi::xml_node worksheet = sheetDoc.child("worksheet");
-                        pugi::xml_node drawingNode = worksheet.child("drawing");
-                        if (drawingNode) {
-                            std::string drawingRId = drawingNode.attribute("r:id").as_string();
-                            // find drawing target in sheet rels
-                            fs::path sheetRelsPath = sheetPath.parent_path() / "_rels" / (sheetPath.filename().string() + ".rels");
-                            std::string drawingTarget;
-                            if (fs::exists(sheetRelsPath)) {
-                                pugi::xml_document sheetRelsDoc;
-                                if (sheetRelsDoc.load_file(sheetRelsPath.c_str())) {
-                                    pugi::xml_node sroot = sheetRelsDoc.child("Relationships");
-                                    for (pugi::xml_node rel : sroot.children("Relationship")) {
-                                        if (std::string(rel.attribute("Id").as_string()) == drawingRId) {
-                                            drawingTarget = rel.attribute("Target").as_string();
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (!drawingTarget.empty()) {
-                                fs::path drawingPath;
-                                try {
-                                    drawingPath = (sheetPath.parent_path() / drawingTarget).lexically_normal();
-                                } catch(...) {
-                                    drawingPath = (tmp / "xl" / drawingTarget).lexically_normal();
-                                }
-                                fs::path drawingRelsPath = drawingPath.parent_path() / "_rels" / (drawingPath.filename().string() + ".rels");
-
-                                // Build image map from drawing rels
-                                std::unordered_map<std::string, std::string> imageMap;
-                                if (fs::exists(drawingRelsPath)) {
-                                    pugi::xml_document drelDoc;
-                                    if (drelDoc.load_file(drawingRelsPath.c_str())) {
-                                        pugi::xml_node droot = drelDoc.child("Relationships");
-                                        for (pugi::xml_node rel : droot.children("Relationship")) {
-                                            std::string type = rel.attribute("Type").as_string();
-                                            if (type.find("image") != std::string::npos) {
-                                                imageMap[rel.attribute("Id").as_string()] = rel.attribute("Target").as_string();
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (fs::exists(drawingPath)) {
-                                    std::ifstream drawingFile(drawingPath);
-                                    std::string drawingContent((std::istreambuf_iterator<char>(drawingFile)), std::istreambuf_iterator<char>());
-                                    drawingFile.close();
-
-                                    size_t anchorPos = 0;
-                                    while ((anchorPos = drawingContent.find("<xdr:twoCellAnchor", anchorPos)) != std::string::npos) {
-                                        size_t anchorEnd = drawingContent.find("</xdr:twoCellAnchor>", anchorPos);
-                                        if (anchorEnd == std::string::npos) break;
-                                        std::string anchorTag = drawingContent.substr(anchorPos, anchorEnd - anchorPos + 20);
-
-                                        // Extract from col and row
-                                        size_t fromPos = anchorTag.find("<xdr:from>");
-                                        int fromCol = -1, fromRow = -1;
-                                        if (fromPos != std::string::npos) {
-                                            size_t colPos = anchorTag.find("<xdr:col>", fromPos);
-                                            if (colPos != std::string::npos) {
-                                                colPos += 9;
-                                                size_t colEnd = anchorTag.find("</xdr:col>", colPos);
-                                                if (colEnd != std::string::npos) {
-                                                    fromCol = std::stoi(anchorTag.substr(colPos, colEnd - colPos));
-                                                }
-                                            }
-                                            size_t rowPos = anchorTag.find("<xdr:row>", fromPos);
-                                            if (rowPos != std::string::npos) {
-                                                rowPos += 9;
-                                                size_t rowEnd = anchorTag.find("</xdr:row>", rowPos);
-                                                if (rowEnd != std::string::npos) {
-                                                    fromRow = std::stoi(anchorTag.substr(rowPos, rowEnd - rowPos));
-                                                }
-                                            }
-                                        }
-
-                                        // Extract embed id
-                                        size_t embedPos = anchorTag.find("r:embed=\"");
-                                        std::string embedId;
-                                        if (embedPos != std::string::npos) {
-                                            embedPos += 9;
-                                            size_t embedEnd = anchorTag.find("\"", embedPos);
-                                            if (embedEnd != std::string::npos) embedId = anchorTag.substr(embedPos, embedEnd - embedPos);
-                                        }
-
-                                        if (fromCol >= 0 && fromRow >= 0 && !embedId.empty()) {
-                                            std::string ref = XLSheet::columnNumberToLetter(fromCol) + std::to_string(fromRow + 1);
-                                            auto it = imageMap.find(embedId);
-                                            if (it != imageMap.end()) {
-                                                std::string imageTarget = it->second; // e.g., "../media/image1.jpg"
-                                                fs::path absImagePath;
-                                                try {
-                                                    absImagePath = (drawingPath.parent_path() / imageTarget).lexically_normal();
-                                                } catch(...) {
-                                                    absImagePath = fs::path("xl") / imageTarget;
-                                                }
-                                                std::string imageFileName = absImagePath.filename().string();
-                                                std::string relPath;
-                                                try {
-                                                    fs::path base = tmp / "xl";
-                                                    fs::path parent = absImagePath.parent_path();
-                                                    relPath = fs::relative(parent, base).string();
-                                                } catch(...) {
-                                                    relPath = absImagePath.parent_path().string();
-                                                    if (relPath == "../media") relPath = "media";
-                                                }
-                                                PictureInfo pi;
-                                                pi.ref = ref;
-                                                pi.fileName = imageFileName;
-                                                pi.relativePath = relPath;
-                                                out.push_back(pi);
-                                            }
-                                        }
-
-                                        anchorPos = anchorEnd + 20;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (...) {}
-        return out;
+        // Parse drawing XML directly
+        return parseDrawingXML(drawingPath);
     }
 
     std::vector<SheetPicture> OpenXLSXWrapper::fetchAllPicturesInSheet(const std::string& sheetName) const
@@ -414,169 +240,12 @@ namespace cc::neolux::utils::MiniXLSX
         }
         if (sheetIndex < 0) return out;
 
-        // Get pictures using existing logic, but parse to extract row/col details
-        try {
-            if (!ensureTempDir()) {
-                return out; // Failed to extract
-            }
+        // Find the drawing file for this sheet
+        std::string drawingPath = findDrawingPathForSheet(static_cast<unsigned int>(sheetIndex));
+        if (drawingPath.empty()) return out;
 
-            namespace fs = std::filesystem;
-            fs::path tmp(impl_->tempDir);
-
-            // Attempt to load worksheet file by index (sheetN.xml)
-            std::string sheetFile = "sheet" + std::to_string(sheetIndex + 1) + ".xml";
-            fs::path sheetPath = tmp / "xl" / "worksheets" / sheetFile;
-            if (!fs::exists(sheetPath)) {
-                // try workbook rels to map sheet index to target
-                fs::path relsPath = tmp / "xl" / "_rels" / "workbook.xml.rels";
-                if (fs::exists(relsPath)) {
-                    pugi::xml_document relsDoc;
-                    if (relsDoc.load_file(relsPath.c_str())) {
-                        pugi::xml_node root = relsDoc.child("Relationships");
-                        unsigned int idx = 0;
-                        for (pugi::xml_node rel : root.children("Relationship")) {
-                            if (rel.attribute("Type").as_string() == std::string("http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet")) {
-                                if (idx == sheetIndex) {
-                                    std::string target = rel.attribute("Target").as_string();
-                                    sheetPath = (tmp / "xl" / target).lexically_normal();
-                                    break;
-                                }
-                                ++idx;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (fs::exists(sheetPath)) {
-                pugi::xml_document sheetDoc;
-                if (sheetDoc.load_file(sheetPath.c_str())) {
-                    pugi::xml_node worksheet = sheetDoc.child("worksheet");
-                    pugi::xml_node drawingNode = worksheet.child("drawing");
-                    if (drawingNode) {
-                        std::string drawingRId = drawingNode.attribute("r:id").as_string();
-                        // find drawing target in sheet rels
-                        fs::path sheetRelsPath = sheetPath.parent_path() / "_rels" / (sheetPath.filename().string() + ".rels");
-                        std::string drawingTarget;
-                        if (fs::exists(sheetRelsPath)) {
-                            pugi::xml_document sheetRelsDoc;
-                            if (sheetRelsDoc.load_file(sheetRelsPath.c_str())) {
-                                pugi::xml_node sroot = sheetRelsDoc.child("Relationships");
-                                for (pugi::xml_node rel : sroot.children("Relationship")) {
-                                    if (std::string(rel.attribute("Id").as_string()) == drawingRId) {
-                                        drawingTarget = rel.attribute("Target").as_string();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!drawingTarget.empty()) {
-                            fs::path drawingPath;
-                            try {
-                                drawingPath = (sheetPath.parent_path() / drawingTarget).lexically_normal();
-                            } catch(...) {
-                                drawingPath = (tmp / "xl" / drawingTarget).lexically_normal();
-                            }
-                            fs::path drawingRelsPath = drawingPath.parent_path() / "_rels" / (drawingPath.filename().string() + ".rels");
-
-                            // Build image map from drawing rels
-                            std::unordered_map<std::string, std::string> imageMap;
-                            if (fs::exists(drawingRelsPath)) {
-                                pugi::xml_document drelDoc;
-                                if (drelDoc.load_file(drawingRelsPath.c_str())) {
-                                    pugi::xml_node droot = drelDoc.child("Relationships");
-                                    for (pugi::xml_node rel : droot.children("Relationship")) {
-                                        std::string type = rel.attribute("Type").as_string();
-                                        if (type.find("image") != std::string::npos) {
-                                            imageMap[rel.attribute("Id").as_string()] = rel.attribute("Target").as_string();
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (fs::exists(drawingPath)) {
-                                std::ifstream drawingFile(drawingPath);
-                                std::string drawingContent((std::istreambuf_iterator<char>(drawingFile)), std::istreambuf_iterator<char>());
-                                drawingFile.close();
-
-                                size_t anchorPos = 0;
-                                while ((anchorPos = drawingContent.find("<xdr:twoCellAnchor", anchorPos)) != std::string::npos) {
-                                    size_t anchorEnd = drawingContent.find("</xdr:twoCellAnchor>", anchorPos);
-                                    if (anchorEnd == std::string::npos) break;
-                                    std::string anchorTag = drawingContent.substr(anchorPos, anchorEnd - anchorPos + 20);
-
-                                    // Extract from col and row
-                                    size_t fromPos = anchorTag.find("<xdr:from>");
-                                    int fromCol = -1, fromRow = -1;
-                                    if (fromPos != std::string::npos) {
-                                        size_t colPos = anchorTag.find("<xdr:col>", fromPos);
-                                        if (colPos != std::string::npos) {
-                                            colPos += 9;
-                                            size_t colEnd = anchorTag.find("</xdr:col>", colPos);
-                                            if (colEnd != std::string::npos) {
-                                                fromCol = std::stoi(anchorTag.substr(colPos, colEnd - colPos));
-                                            }
-                                        }
-                                        size_t rowPos = anchorTag.find("<xdr:row>", fromPos);
-                                        if (rowPos != std::string::npos) {
-                                            rowPos += 9;
-                                            size_t rowEnd = anchorTag.find("</xdr:row>", rowPos);
-                                            if (rowEnd != std::string::npos) {
-                                                fromRow = std::stoi(anchorTag.substr(rowPos, rowEnd - rowPos));
-                                            }
-                                        }
-                                    }
-
-                                    // Extract embed id
-                                    size_t embedPos = anchorTag.find("r:embed=\"");
-                                    std::string embedId;
-                                    if (embedPos != std::string::npos) {
-                                        embedPos += 9;
-                                        size_t embedEnd = anchorTag.find("\"", embedPos);
-                                        if (embedEnd != std::string::npos) embedId = anchorTag.substr(embedPos, embedEnd - embedPos);
-                                    }
-
-                                    if (fromCol >= 0 && fromRow >= 0 && !embedId.empty()) {
-                                        auto it = imageMap.find(embedId);
-                                        if (it != imageMap.end()) {
-                                            std::string imageTarget = it->second; // e.g., "../media/image1.jpg"
-                                            fs::path absImagePath;
-                                            try {
-                                                absImagePath = (drawingPath.parent_path() / imageTarget).lexically_normal();
-                                            } catch(...) {
-                                                absImagePath = fs::path("xl") / imageTarget;
-                                            }
-                                            std::string imageFileName = absImagePath.filename().string();
-                                            std::string relPath;
-                                            try {
-                                                fs::path base = tmp / "xl";
-                                                fs::path parent = absImagePath.parent_path();
-                                                relPath = fs::relative(parent, base).string();
-                                            } catch(...) {
-                                                relPath = absImagePath.parent_path().string();
-                                                if (relPath == "../media") relPath = "media";
-                                            }
-                                            if (relPath == "../media") relPath = "media";
-                                            SheetPicture sp;
-                                            sp.row = std::to_string(fromRow + 1);
-                                            sp.col = XLSheet::columnNumberToLetter(fromCol);
-                                            sp.rowNum = fromRow + 1;
-                                            sp.colNum = fromCol + 1;  // Since columns are 1-based in Excel
-                                            sp.relativePath = relPath + "/" + imageFileName;
-                                            out.push_back(sp);
-                                        }
-                                    }
-
-                                    anchorPos = anchorEnd + 20;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (...) {}
-        return out;
+        // Parse drawing XML directly
+        return parseDrawingXMLForSheetPictures(drawingPath);
     }
 
     std::optional<std::vector<uint8_t>> OpenXLSXWrapper::getPictureRaw(unsigned int sheetIndex, const std::string& ref) const
@@ -612,4 +281,285 @@ namespace cc::neolux::utils::MiniXLSX
         return std::nullopt;
     }
 
+    std::vector<PictureInfo> OpenXLSXWrapper::parseDrawingXML(const std::string& drawingPath) const
+    {
+        std::vector<PictureInfo> out;
+        if (!ensureTempDir()) return out;
+
+        namespace fs = std::filesystem;
+        fs::path tmp(impl_->tempDir);
+        fs::path drawingFullPath = tmp / drawingPath;
+
+        if (!fs::exists(drawingFullPath)) return out;
+
+        // Build image map from drawing rels
+        fs::path drawingRelsPath = drawingFullPath.parent_path() / "_rels" / (drawingFullPath.filename().string() + ".rels");
+        std::unordered_map<std::string, std::string> imageMap;
+        if (fs::exists(drawingRelsPath)) {
+            pugi::xml_document drelDoc;
+            if (drelDoc.load_file(drawingRelsPath.c_str())) {
+                pugi::xml_node droot = drelDoc.child("Relationships");
+                for (pugi::xml_node rel : droot.children("Relationship")) {
+                    std::string type = rel.attribute("Type").as_string();
+                    if (type.find("image") != std::string::npos) {
+                        imageMap[rel.attribute("Id").as_string()] = rel.attribute("Target").as_string();
+                    }
+                }
+            }
+        }
+
+        // Parse drawing XML
+        std::ifstream drawingFile(drawingFullPath);
+        std::string drawingContent((std::istreambuf_iterator<char>(drawingFile)), std::istreambuf_iterator<char>());
+        drawingFile.close();
+
+        size_t anchorPos = 0;
+        while ((anchorPos = drawingContent.find("<xdr:twoCellAnchor", anchorPos)) != std::string::npos) {
+            size_t anchorEnd = drawingContent.find("</xdr:twoCellAnchor>", anchorPos);
+            if (anchorEnd == std::string::npos) break;
+            std::string anchorTag = drawingContent.substr(anchorPos, anchorEnd - anchorPos + 20);
+
+            // Extract from col and row
+            size_t fromPos = anchorTag.find("<xdr:from>");
+            int fromCol = -1, fromRow = -1;
+            if (fromPos != std::string::npos) {
+                size_t colPos = anchorTag.find("<xdr:col>", fromPos);
+                if (colPos != std::string::npos) {
+                    colPos += 9;
+                    size_t colEnd = anchorTag.find("</xdr:col>", colPos);
+                    if (colEnd != std::string::npos) {
+                        fromCol = std::stoi(anchorTag.substr(colPos, colEnd - colPos));
+                    }
+                }
+                size_t rowPos = anchorTag.find("<xdr:row>", fromPos);
+                if (rowPos != std::string::npos) {
+                    rowPos += 9;
+                    size_t rowEnd = anchorTag.find("</xdr:row>", rowPos);
+                    if (rowEnd != std::string::npos) {
+                        fromRow = std::stoi(anchorTag.substr(rowPos, rowEnd - rowPos));
+                    }
+                }
+            }
+
+            // Extract embed id
+            size_t embedPos = anchorTag.find("r:embed=\"");
+            std::string embedId;
+            if (embedPos != std::string::npos) {
+                embedPos += 9;
+                size_t embedEnd = anchorTag.find("\"", embedPos);
+                if (embedEnd != std::string::npos) embedId = anchorTag.substr(embedPos, embedEnd - embedPos);
+            }
+
+            if (fromCol >= 0 && fromRow >= 0 && !embedId.empty()) {
+                std::string ref = XLSheet::columnNumberToLetter(fromCol) + std::to_string(fromRow + 1);
+                auto it = imageMap.find(embedId);
+                if (it != imageMap.end()) {
+                    std::string imageTarget = it->second; // e.g., "../media/image1.jpg"
+                    fs::path absImagePath;
+                    try {
+                        absImagePath = (drawingFullPath.parent_path() / imageTarget).lexically_normal();
+                    } catch(...) {
+                        absImagePath = fs::path("xl") / imageTarget;
+                    }
+                    std::string imageFileName = absImagePath.filename().string();
+                    std::string relPath;
+                    try {
+                        fs::path base = tmp / "xl";
+                        fs::path parent = absImagePath.parent_path();
+                        relPath = fs::relative(parent, base).string();
+                    } catch(...) {
+                        relPath = absImagePath.parent_path().string();
+                        if (relPath == "../media") relPath = "media";
+                    }
+                    if (relPath == "../media") relPath = "media";
+                    PictureInfo pi;
+                    pi.ref = ref;
+                    pi.fileName = imageFileName;
+                    pi.relativePath = relPath;
+                    out.push_back(pi);
+                }
+            }
+
+            anchorPos = anchorEnd + 20;
+        }
+
+        return out;
+    }
+
+    std::string OpenXLSXWrapper::findDrawingPathForSheet(unsigned int sheetIndex) const
+    {
+        if (!ensureTempDir()) return "";
+
+        namespace fs = std::filesystem;
+        fs::path tmp(impl_->tempDir);
+
+        // Attempt to load worksheet file by index (sheetN.xml)
+        std::string sheetFile = "sheet" + std::to_string(sheetIndex + 1) + ".xml";
+        fs::path sheetPath = tmp / "xl" / "worksheets" / sheetFile;
+        if (!fs::exists(sheetPath)) {
+            // try workbook rels to map sheet index to target
+            fs::path relsPath = tmp / "xl" / "_rels" / "workbook.xml.rels";
+            if (fs::exists(relsPath)) {
+                pugi::xml_document relsDoc;
+                if (relsDoc.load_file(relsPath.c_str())) {
+                    pugi::xml_node root = relsDoc.child("Relationships");
+                    unsigned int idx = 0;
+                    for (pugi::xml_node rel : root.children("Relationship")) {
+                        if (rel.attribute("Type").as_string() == std::string("http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet")) {
+                            if (idx == sheetIndex) {
+                                std::string target = rel.attribute("Target").as_string();
+                                sheetPath = (tmp / "xl" / target).lexically_normal();
+                                break;
+                            }
+                            ++idx;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!fs::exists(sheetPath)) return "";
+
+        pugi::xml_document sheetDoc;
+        if (!sheetDoc.load_file(sheetPath.c_str())) return "";
+
+        pugi::xml_node worksheet = sheetDoc.child("worksheet");
+        pugi::xml_node drawingNode = worksheet.child("drawing");
+        if (!drawingNode) return "";
+
+        std::string drawingRId = drawingNode.attribute("r:id").as_string();
+
+        // find drawing target in sheet rels
+        fs::path sheetRelsPath = sheetPath.parent_path() / "_rels" / (sheetPath.filename().string() + ".rels");
+        std::string drawingTarget;
+        if (fs::exists(sheetRelsPath)) {
+            pugi::xml_document sheetRelsDoc;
+            if (sheetRelsDoc.load_file(sheetRelsPath.c_str())) {
+                pugi::xml_node sroot = sheetRelsDoc.child("Relationships");
+                for (pugi::xml_node rel : sroot.children("Relationship")) {
+                    if (std::string(rel.attribute("Id").as_string()) == drawingRId) {
+                        drawingTarget = rel.attribute("Target").as_string();
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (drawingTarget.empty()) return "";
+
+        fs::path drawingPath;
+        try {
+            drawingPath = (sheetPath.parent_path() / drawingTarget).lexically_normal();
+        } catch(...) {
+            drawingPath = (tmp / "xl" / drawingTarget).lexically_normal();
+        }
+
+        return drawingPath.string().substr(tmp.string().size() + 1); // Return relative path from temp dir
+    }
+
+    std::vector<SheetPicture> OpenXLSXWrapper::parseDrawingXMLForSheetPictures(const std::string& drawingPath) const
+    {
+        std::vector<SheetPicture> out;
+        if (!ensureTempDir()) return out;
+
+        namespace fs = std::filesystem;
+        fs::path tmp(impl_->tempDir);
+        fs::path drawingFullPath = tmp / drawingPath;
+
+        if (!fs::exists(drawingFullPath)) return out;
+
+        // Build image map from drawing rels
+        fs::path drawingRelsPath = drawingFullPath.parent_path() / "_rels" / (drawingFullPath.filename().string() + ".rels");
+        std::unordered_map<std::string, std::string> imageMap;
+        if (fs::exists(drawingRelsPath)) {
+            pugi::xml_document drelDoc;
+            if (drelDoc.load_file(drawingRelsPath.c_str())) {
+                pugi::xml_node droot = drelDoc.child("Relationships");
+                for (pugi::xml_node rel : droot.children("Relationship")) {
+                    std::string type = rel.attribute("Type").as_string();
+                    if (type.find("image") != std::string::npos) {
+                        imageMap[rel.attribute("Id").as_string()] = rel.attribute("Target").as_string();
+                    }
+                }
+            }
+        }
+
+        // Parse drawing XML
+        std::ifstream drawingFile(drawingFullPath);
+        std::string drawingContent((std::istreambuf_iterator<char>(drawingFile)), std::istreambuf_iterator<char>());
+        drawingFile.close();
+
+        size_t anchorPos = 0;
+        while ((anchorPos = drawingContent.find("<xdr:twoCellAnchor", anchorPos)) != std::string::npos) {
+            size_t anchorEnd = drawingContent.find("</xdr:twoCellAnchor>", anchorPos);
+            if (anchorEnd == std::string::npos) break;
+            std::string anchorTag = drawingContent.substr(anchorPos, anchorEnd - anchorPos + 20);
+
+            // Extract from col and row
+            size_t fromPos = anchorTag.find("<xdr:from>");
+            int fromCol = -1, fromRow = -1;
+            if (fromPos != std::string::npos) {
+                size_t colPos = anchorTag.find("<xdr:col>", fromPos);
+                if (colPos != std::string::npos) {
+                    colPos += 9;
+                    size_t colEnd = anchorTag.find("</xdr:col>", colPos);
+                    if (colEnd != std::string::npos) {
+                        fromCol = std::stoi(anchorTag.substr(colPos, colEnd - colPos));
+                    }
+                }
+                size_t rowPos = anchorTag.find("<xdr:row>", fromPos);
+                if (rowPos != std::string::npos) {
+                    rowPos += 9;
+                    size_t rowEnd = anchorTag.find("</xdr:row>", rowPos);
+                    if (rowEnd != std::string::npos) {
+                        fromRow = std::stoi(anchorTag.substr(rowPos, rowEnd - rowPos));
+                    }
+                }
+            }
+
+            // Extract embed id
+            size_t embedPos = anchorTag.find("r:embed=\"");
+            std::string embedId;
+            if (embedPos != std::string::npos) {
+                embedPos += 9;
+                size_t embedEnd = anchorTag.find("\"", embedPos);
+                if (embedEnd != std::string::npos) embedId = anchorTag.substr(embedPos, embedEnd - embedPos);
+            }
+
+            if (fromCol >= 0 && fromRow >= 0 && !embedId.empty()) {
+                auto it = imageMap.find(embedId);
+                if (it != imageMap.end()) {
+                    std::string imageTarget = it->second; // e.g., "../media/image1.jpg"
+                    fs::path absImagePath;
+                    try {
+                        absImagePath = (drawingFullPath.parent_path() / imageTarget).lexically_normal();
+                    } catch(...) {
+                        absImagePath = fs::path("xl") / imageTarget;
+                    }
+                    std::string imageFileName = absImagePath.filename().string();
+                    std::string relPath;
+                    try {
+                        fs::path base = tmp / "xl";
+                        fs::path parent = absImagePath.parent_path();
+                        relPath = fs::relative(parent, base).string();
+                    } catch(...) {
+                        relPath = absImagePath.parent_path().string();
+                        if (relPath == "../media") relPath = "media";
+                    }
+                    if (relPath == "../media") relPath = "media";
+                    SheetPicture sp;
+                    sp.row = std::to_string(fromRow + 1);
+                    sp.col = XLSheet::columnNumberToLetter(fromCol);
+                    sp.rowNum = fromRow + 1;
+                    sp.colNum = fromCol + 1;  // Since columns are 1-based in Excel
+                    sp.relativePath = relPath + "/" + imageFileName;
+                    out.push_back(sp);
+                }
+            }
+
+            anchorPos = anchorEnd + 20;
+        }
+
+        return out;
+    }
 } // namespace cc::neolux::utils::MiniXLSX

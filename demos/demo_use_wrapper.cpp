@@ -9,9 +9,9 @@
 
 int main(int argc, char** argv)
 {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <xlsx_file_path>" << std::endl;
-        std::cerr << "Example: " << argv[0] << " test.xlsx" << std::endl;
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <xlsx_file_path> <sheet_name>" << std::endl;
+        std::cerr << "Example: " << argv[0] << " test.xlsx SO13(DNo.1)MS" << std::endl;
         return 1;
     }
 
@@ -24,7 +24,8 @@ int main(int argc, char** argv)
     }
 
     // Find sheet index by name
-    std::string targetSheet = "SO13(DNo.1)MS";
+    std::string targetSheet = argv[2];
+    std::cout << "Looking for sheet: " << targetSheet << std::endl;
     int sheetIndex = -1;
     for (unsigned int i = 0; i < wrapper.sheetCount(); ++i) {
         if (wrapper.sheetName(i) == targetSheet) { sheetIndex = static_cast<int>(i); break; }
@@ -94,20 +95,33 @@ int main(int argc, char** argv)
                   << "Path: " << pic.relativePath << std::endl;
     }
 
-    // Set G8 background to red and save
-    cc::neolux::utils::MiniXLSX::CellStyle cs;
-    cs.backgroundColor = "#FF0000"; // red
-    if (!wrapper.setCellStyle(static_cast<unsigned int>(sheetIndex), "G8", cs)) {
-        std::cerr << "Failed to set cell style for G8" << std::endl;
-    }
-    if (!wrapper.save()) {
-        std::cerr << "Failed to save workbook" << std::endl;
+    // Test: Set text "[D]" in cell H8 and SAVE to test if our fix works
+    std::cout << "Setting text '[D]' in cell H8 (empty cell, not containing a picture) and SAVING..." << std::endl;
+    if (!wrapper.setCellValue(static_cast<unsigned int>(sheetIndex), "H8", "[D]")) {
+        std::cerr << "Failed to set cell value for H8" << std::endl;
+    } else {
+        std::cout << "Successfully set cell value. Now saving the file..." << std::endl;
+        if (wrapper.save()) {
+            std::cout << "File saved successfully!" << std::endl;
+        } else {
+            std::cerr << "Failed to save file!" << std::endl;
+        }
     }
 
-    // Print G8 value
-    auto v = wrapper.getCellValue(static_cast<unsigned int>(sheetIndex), "G8");
-    if (v.has_value()) std::cout << "G8=" << v.value() << std::endl;
-    else std::cout << "G8 empty" << std::endl;
+    // Verify the cell value was set
+    auto v = wrapper.getCellValue(static_cast<unsigned int>(sheetIndex), "H8");
+    if (v.has_value()) std::cout << "H8 now contains: '" << v.value() << "'" << std::endl;
+    else std::cout << "H8 is empty" << std::endl;
+
+    // Test: After save, check if pictures are still detectable
+    std::cout << "After save, checking if pictures are still detectable..." << std::endl;
+    auto allPicsAfterSave = wrapper.fetchAllPicturesInSheet(targetSheet);
+    std::cout << "Found " << allPicsAfterSave.size() << " pictures in sheet '" << targetSheet << "' after save:" << std::endl;
+    for (const auto& pic : allPicsAfterSave) {
+        std::cout << "  Row: " << pic.row << ", Col: " << pic.col 
+                  << " (Num: " << pic.rowNum << "," << pic.colNum << ") "
+                  << "Path: " << pic.relativePath << std::endl;
+    }
 
     // Manually cleanup temp directory when done
     wrapper.cleanupTempDir();
